@@ -43,13 +43,11 @@ export default function DashboardPage() {
   const fetchData = async () => {
     setLoading(true);
 
-    // Hent projekter
     const { data: projectData } = await supabase
       .from('projects')
       .select('*')
       .order('created_at', { ascending: false });
 
-    // Hent events med projekt-info
     const { data: eventData } = await supabase
       .from('webhook_events')
       .select('*, projects(name, api_key)')
@@ -86,10 +84,10 @@ export default function DashboardPage() {
         setSlackUrl('');
         fetchData();
       } else {
-        alert(json.error || 'Der skete en fejl.');
+        alert(json.error || 'Something went wrong.');
       }
     } catch (err) {
-      alert('Der opstod en fejl under oprettelse af projektet.');
+      alert('Error occurred while creating project.');
     } finally {
       setIsCreating(false);
     }
@@ -184,11 +182,11 @@ export default function DashboardPage() {
           </div>
 
           {loading ? (
-            <div className="text-center py-12 text-slate-500 text-sm">Henter hændelser...</div>
+            <div className="text-center py-12 text-slate-500 text-sm">Fetching incidents...</div>
           ) : events.length === 0 ? (
             <div className="text-center py-16 bg-slate-900/50 border border-slate-800 rounded-xl border-dashed">
-              <p className="text-slate-400 font-medium">Ingen registrerede hændelser endnu.</p>
-              <p className="text-xs text-slate-500 mt-1">Send webhooks til et af dine endpoints for at se dem her.</p>
+              <p className="text-slate-400 font-medium">No recorded incidents yet.</p>
+              <p className="text-xs text-slate-500 mt-1">Send webhooks to any of your ingest endpoints to see them here.</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -225,7 +223,14 @@ export default function DashboardPage() {
                         )}
                       </div>
                       <time className="text-xs text-slate-400">
-                        {new Date(evt.created_at).toLocaleString('da-DK')}
+                        {new Date(evt.created_at).toLocaleString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit'
+                        })}
                       </time>
                     </div>
 
@@ -248,7 +253,7 @@ export default function DashboardPage() {
                     </div>
 
                     <details className="text-xs text-slate-400 pt-1 cursor-pointer">
-                      <summary className="hover:text-slate-200">Vis rå payload</summary>
+                      <summary className="hover:text-slate-200">View raw payload</summary>
                       <pre className="mt-2 p-3 bg-slate-950 rounded-lg overflow-x-auto text-[11px] font-mono text-slate-300 border border-slate-800">
                         {JSON.stringify(evt.raw_payload, null, 2)}
                       </pre>
@@ -262,7 +267,7 @@ export default function DashboardPage() {
 
       </div>
 
-      {/* Modal: Opret Projekt */}
+      {/* Modal: Create Project */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-6 shadow-2xl">
@@ -280,8 +285,8 @@ export default function DashboardPage() {
             {createdProject ? (
               <div className="space-y-4">
                 <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 rounded-xl text-xs space-y-2">
-                  <p className="font-bold text-sm">🎉 Projekt oprettet med succes!</p>
-                  <p>Brug følgende endpoint i dine webhook-indstillinger:</p>
+                  <p className="font-bold text-sm">🎉 Project created successfully!</p>
+                  <p>Use the following ingest URL in your webhook provider settings:</p>
                   <div className="bg-slate-950 p-2.5 rounded font-mono text-[11px] text-white select-all break-all border border-emerald-500/30">
                     https://usehooklens.com/api/ingest/{createdProject.api_key}
                   </div>
@@ -290,7 +295,7 @@ export default function DashboardPage() {
                   onClick={() => setIsModalOpen(false)}
                   className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition"
                 >
-                  Luk & gå til Dashboard
+                  Close & View Dashboard
                 </button>
               </div>
             ) : (
@@ -300,7 +305,7 @@ export default function DashboardPage() {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Shopify Production Store, Stripe EU, Auth Service"
+                    placeholder="e.g. Shopify Production, Stripe EU, Auth Webhooks"
                     value={projectName}
                     onChange={(e) => setProjectName(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
@@ -308,7 +313,7 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-300">Slack Webhook URL (Valgfri)</label>
+                  <label className="text-xs font-semibold text-slate-300">Slack Webhook URL (Optional)</label>
                   <input
                     type="url"
                     placeholder="https://hooks.slack.com/services/..."
@@ -317,7 +322,7 @@ export default function DashboardPage() {
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
                   />
                   <p className="text-[11px] text-slate-500">
-                    Hvis tom, bruges standard-kanalen fra systemet.
+                    If left blank, system default Slack alerts channel is used.
                   </p>
                 </div>
 
@@ -327,14 +332,14 @@ export default function DashboardPage() {
                     onClick={() => setIsModalOpen(false)}
                     className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white"
                   >
-                    Annuller
+                    Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={isCreating}
                     className="px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition disabled:opacity-50"
                   >
-                    {isCreating ? 'Opretter...' : 'Generer Endpoint'}
+                    {isCreating ? 'Creating...' : 'Generate Endpoint'}
                   </button>
                 </div>
               </form>
