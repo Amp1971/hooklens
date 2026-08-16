@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/app/lib/supabase';
 
@@ -14,6 +14,7 @@ interface WebhookEvent {
   root_cause: string;
   suggested_fix: string;
   raw_payload: any;
+  project_id?: string;
   projects?: {
     name: string;
     api_key: string;
@@ -36,6 +37,12 @@ export default function DashboardPage() {
 
   // Copy URL state
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Filter & Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedSeverity, setSelectedSeverity] = useState<string>('ALL');
+  const [selectedProject, setSelectedProject] = useState<string>('ALL');
+  const [selectedService, setSelectedService] = useState<string>('ALL');
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -107,6 +114,56 @@ export default function DashboardPage() {
     } finally {
       setIsCreating(false);
     }
+  };
+
+  // Dynamiske services til dropdown
+  const uniqueServices = useMemo(() => {
+    const services = Array.from(new Set(events.map((e) => e.service).filter(Boolean)));
+    return services;
+  }, [events]);
+
+  // Filtreringslogik
+  const filteredEvents = useMemo(() => {
+    return events.filter((evt) => {
+      // 1. Severity filter
+      if (selectedSeverity !== 'ALL' && evt.severity !== selectedSeverity) {
+        return false;
+      }
+
+      // 2. Project filter
+      if (selectedProject !== 'ALL' && evt.projects?.api_key !== selectedProject) {
+        return false;
+      }
+
+      // 3. Service filter
+      if (selectedService !== 'ALL' && evt.service?.toLowerCase() !== selectedService.toLowerCase()) {
+        return false;
+      }
+
+      // 4. Fritekst søgning
+      if (searchQuery.trim() !== '') {
+        const query = searchQuery.toLowerCase();
+        const matchesUser = evt.affected_user?.toLowerCase().includes(query);
+        const matchesSummary = evt.summary?.toLowerCase().includes(query);
+        const matchesRootCause = evt.root_cause?.toLowerCase().includes(query);
+        const matchesFix = evt.suggested_fix?.toLowerCase().includes(query);
+        const matchesService = evt.service?.toLowerCase().includes(query);
+        const matchesProject = evt.projects?.name?.toLowerCase().includes(query);
+
+        return matchesUser || matchesSummary || matchesRootCause || matchesFix || matchesService || matchesProject;
+      }
+
+      return true;
+    });
+  }, [events, selectedSeverity, selectedProject, selectedService, searchQuery]);
+
+  const hasActiveFilters = searchQuery !== '' || selectedSeverity !== 'ALL' || selectedProject !== 'ALL' || selectedService !== 'ALL';
+
+  const resetFilters = () => {
+    setSearchQuery('');
+    setSelectedSeverity('ALL');
+    setSelectedProject('ALL');
+    setSelectedService('ALL');
   };
 
   const totalEvents = events.length;
@@ -207,28 +264,105 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        {/* Incidents Feed */}
+        {/* Incidents Feed with Search & Filters */}
         <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-white">Incident Stream</h2>
-            <button
-              onClick={fetchData}
-              className="text-xs text-blue-400 hover:text-blue-300 font-medium"
-            >
-              ↻ Refresh
-            </button>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-white">Incident Stream</h2>
+              <p className="text-xs text-slate-400">
+                Showing {filteredEvents.length} of {events.length} incidents
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              {hasActiveFilters && (
+                <button
+                  onClick={resetFilters}
+                  className="text-xs text-rose-400 hover:text-rose-300 font-medium"
+                >
+                  ✕ Clear Filters
+                </button>
+              )}
+              <button
+                onClick={fetchData}
+                className="text-xs text-blue-400 hover:text-blue-300 font-medium"
+              >
+                ↻ Refresh
+              </button>
+            </div>
           </div>
 
+          {/* Search & Filter Bar */}
+          <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Free-text Search */}
+            <div>
+              <input
+                type="text"
+                placeholder="🔍 Search user, error, root cause..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            {/* Severity Filter */}
+            <div>
+              <select
+                value={selectedSeverity}
+                onChange={(e) => setSelectedSeverity(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+              >
+                <option value="ALL">All Severities</option>
+                <option value="CRITICAL">🔴 Critical</option>
+                <option value="HIGH">🟠 High</option>
+                <option value="MEDIUM">🟡 Medium</option>
+                <option value="LOW">🟢 Low</option>
+              </select>
+            </div>
+
+            {/* Project Filter */}
+            <div>
+              <select
+                value={selectedProject}
+                onChange={(e) => setSelectedProject(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+              >
+                <option value="ALL">All Projects</option>
+                {projects.map((proj) => (
+                  <option key={proj.id} value={proj.api_key}>
+                    📁 {proj.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Service Filter */}
+            <div>
+              <select
+                value={selectedService}
+                onChange={(e) => setSelectedService(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+              >
+                <option value="ALL">All Services</option>
+                {uniqueServices.map((srv) => (
+                  <option key={srv} value={srv}>
+                    ⚡ {srv}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Stream List */}
           {loading ? (
             <div className="text-center py-12 text-slate-500 text-sm">Fetching incidents...</div>
-          ) : events.length === 0 ? (
+          ) : filteredEvents.length === 0 ? (
             <div className="text-center py-16 bg-slate-900/50 border border-slate-800 rounded-xl border-dashed">
-              <p className="text-slate-400 font-medium">No recorded incidents yet.</p>
-              <p className="text-xs text-slate-500 mt-1">Send webhooks to any of your ingest endpoints to see them here.</p>
+              <p className="text-slate-400 font-medium">No incidents matched your criteria.</p>
+              <p className="text-xs text-slate-500 mt-1">Try clearing your filters or search query.</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {events.map((evt) => {
+              {filteredEvents.map((evt) => {
                 const isCritical = evt.severity === 'CRITICAL' || evt.severity === 'HIGH';
                 return (
                   <div
