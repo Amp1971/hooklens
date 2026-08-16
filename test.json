@@ -1,0 +1,1 @@
+{"event":"invoice.payment_failed","customer":"cus_N9qL82kdA0","customer_email":"jane.doe@example.com","amount_due":2900,"currency":"usd","attempt_count":3,"error":{"code":"card_declined","decline_code":"insufficient_funds","message":"The customer card does not have sufficient funds to cover the charge."}}
