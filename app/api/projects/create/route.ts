@@ -4,26 +4,25 @@ import crypto from 'crypto';
 
 export async function POST(request: Request) {
   try {
-    const { name, slackWebhookUrl } = await request.json();
+    const { name, slackWebhookUrl, discordWebhookUrl } = await request.json();
 
     if (!name || name.trim() === '') {
       return NextResponse.json(
-        { success: false, error: 'Projektnavn er påkrævet.' },
+        { success: false, error: 'Project name is required.' },
         { status: 400 }
       );
     }
 
-    // Generer en unik API-nøgle, f.eks: hk_live_a1b2c3d4e5f6
     const randomSuffix = crypto.randomBytes(8).toString('hex');
     const apiKey = `hk_live_${randomSuffix}`;
 
-    // Gem projektet i Supabase
     const { data: project, error } = await supabase
       .from('projects')
       .insert({
         name: name.trim(),
         api_key: apiKey,
-        slack_webhook_url: slackWebhookUrl?.trim() || null
+        slack_webhook_url: slackWebhookUrl?.trim() || null,
+        discord_webhook_url: discordWebhookUrl?.trim() || null
       })
       .select()
       .single();
@@ -40,7 +39,7 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error('Create Project Error:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Kunne ikke oprette projekt.' },
+      { success: false, error: error.message || 'Failed to create project.' },
       { status: 500 }
     );
   }

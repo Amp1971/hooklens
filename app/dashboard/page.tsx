@@ -25,6 +25,7 @@ interface Project {
   name: string;
   api_key: string;
   slack_webhook_url: string | null;
+  discord_webhook_url: string | null;
   created_at: string;
 }
 
@@ -40,6 +41,7 @@ export default function DashboardPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [projectName, setProjectName] = useState('');
   const [slackUrl, setSlackUrl] = useState('');
+  const [discordUrl, setDiscordUrl] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [createdProject, setCreatedProject] = useState<Project | null>(null);
 
@@ -85,7 +87,8 @@ export default function DashboardPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: projectName,
-          slackWebhookUrl: slackUrl
+          slackWebhookUrl: slackUrl,
+          discordWebhookUrl: discordUrl
         })
       });
 
@@ -94,6 +97,7 @@ export default function DashboardPage() {
         setCreatedProject(json.project);
         setProjectName('');
         setSlackUrl('');
+        setDiscordUrl('');
         fetchData();
       } else {
         alert(json.error || 'Something went wrong.');
@@ -122,7 +126,7 @@ export default function DashboardPage() {
               </h1>
             </div>
             <p className="text-sm text-slate-400 mt-1">
-              AI-driven webhook monitoring & automated root-cause analysis.
+              AI-driven webhook monitoring & automated multi-channel root-cause analysis.
             </p>
           </div>
 
@@ -170,7 +174,13 @@ export default function DashboardPage() {
               return (
                 <div key={proj.id} className="bg-slate-950/70 border border-slate-800 rounded-lg p-3.5 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="font-semibold text-white text-xs">{proj.name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-white text-xs">{proj.name}</span>
+                      <div className="flex items-center gap-1 text-[10px]">
+                        {proj.slack_webhook_url && <span className="bg-purple-500/10 text-purple-400 px-1.5 py-0.2 rounded border border-purple-500/20">Slack</span>}
+                        {proj.discord_webhook_url && <span className="bg-indigo-500/10 text-indigo-400 px-1.5 py-0.2 rounded border border-indigo-500/20">Discord</span>}
+                      </div>
+                    </div>
                     <span className="text-[10px] font-mono bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20">
                       {proj.api_key}
                     </span>
@@ -357,8 +367,19 @@ export default function DashboardPage() {
                     onChange={(e) => setSlackUrl(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
                   />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-300">Discord Webhook URL (Optional)</label>
+                  <input
+                    type="url"
+                    placeholder="https://discord.com/api/webhooks/..."
+                    value={discordUrl}
+                    onChange={(e) => setDiscordUrl(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                  />
                   <p className="text-[11px] text-slate-500">
-                    If left blank, system default Slack alerts channel is used.
+                    You can provide Slack, Discord, or both.
                   </p>
                 </div>
 

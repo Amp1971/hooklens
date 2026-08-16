@@ -1,91 +1,8 @@
 import { NextResponse } from 'next/server';
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 import { supabase } from '@/app/lib/supabase';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-async function sendToSlack(analysis: any, slackWebhookUrl: string) {
-  if (!slackWebhookUrl) return;
-
-  const severityColor = analysis.severity === 'CRITICAL' || analysis.severity === 'HIGH' ? '#E01E5A' : '#ECB22E';
-
-  const payload = {
-    attachments: [
-      {
-        color: severityColor,
-        blocks: [
-          {
-            type: 'header',
-            text: {
-              type: 'plain_text',
-              text: `🚨 [${analysis.severity}] ${analysis.service} Webhook Failure`,
-              emoji: true
-            }
-          },
-          {
-            type: 'section',
-            fields: [
-              {
-                type: 'mrkdwn',
-                text: `*Affected User / Entity:*\n\`${analysis.affectedUser}\``
-              },
-              {
-                type: 'mrkdwn',
-                text: `*Service:*\n${analysis.service}`
-              }
-            ]
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `*Summary:*\n${analysis.summary}`
-            }
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `*Root Cause:*\n${analysis.rootCause}`
-            }
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `💡 *Suggested Fix:*\n${analysis.suggestedFix}`
-            }
-          },
-          {
-            type: 'actions',
-            elements: [
-              {
-                type: 'button',
-                text: {
-                  type: 'plain_text',
-                  text: 'View in HookLens Dashboard',
-                  emoji: true
-                },
-                url: 'https://usehooklens.com',
-                style: 'primary'
-              }
-            ]
-          }
-        ]
-      }
-    ]
-  };
-
-  try {
-    await fetch(slackWebhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-  } catch (err) {
-    console.error('Failed to send Slack alert:', err);
-  }
-}
 
 export async function POST(
   request: Request,
@@ -94,7 +11,7 @@ export async function POST(
   try {
     const { apiKey } = await params;
 
-    // 1. Slå projektet op i Supabase baseret på API-nøglen
+    // 1. Verificer projektet ud fra API-nøglen
     const { data: project, error: projectError } = await supabase
       .from('projects')
       .select('*')
@@ -103,67 +20,156 @@ export async function POST(
 
     if (projectError || !project) {
       return NextResponse.json(
-        { success: false, error: 'Ugyldig API-nøgle. Opret et projekt i HookLens.' },
+        { success: false, error: 'Ugyldig eller manglende HookLens API-nøgle.' },
         { status: 401 }
       );
     }
 
-    const rawPayload = await request.json();
+    const payload = await request.json();
 
-    // 2. Kør Gemini Triage
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.5-flash',
-      contents: `You are an expert site reliability and webhook triage engineer. 
-Analyze this failed webhook or error payload and return structured actionable advice for the development team.
+    // 2. Kør AI Triage med Gemini 3.5 Flash
+    const prompt = `
+Du er en specialist i overvågning af webhook-fejl (HookLens AI).
+Analyser følgende webhook payload, find ud af hvilken platform fejlen kommer fra (f.eks. Stripe, Shopify, GitHub, Supabase),
+hvor alvorlig den er, hvilken bruger/kunde den vedrører (hvis muligt), kerneårsagen til fejlen og et konkret løsningsforslag.
 
-Payload:
-${JSON.stringify(rawPayload, null, 2)}`,
+Returner svaret udelukkende som valid JSON med følgende format:
+{
+  "service": "Platform/kilde navn (f.eks. Stripe, Shopify, GitHub)",
+  "severity": "CRITICAL", "HIGH", "MEDIUM" eller "LOW",
+  "affected_user": "Kunde e-mail, id eller 'N/A'",
+  "summary": "Kort resumé af hændelsen (1 sætning på engelsk)",
+  "root_cause": "Hvad gik helt præcist galt teknisk (på engelsk)",
+  "suggested_fix": "Hvad skal udvikleren eller support gøre nu for at løse problemet (på engelsk)"
+}
+
+Payload til analyse:
+${JSON.stringify(payload, null, 2)}
+`;
+
+    const aiResponse = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
       config: {
         responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            service: { type: Type.STRING, description: 'Source system, e.g., Stripe, Shopify, GitHub, Unknown' },
-            severity: { type: Type.STRING, description: 'CRITICAL, HIGH, MEDIUM, or LOW' },
-            affectedUser: { type: Type.STRING, description: 'User ID, Email, or Customer Reference if found, otherwise N/A' },
-            summary: { type: Type.STRING, description: 'Clear 1-sentence explanation of what failed' },
-            rootCause: { type: Type.STRING, description: 'Why it happened' },
-            suggestedFix: { type: Type.STRING, description: 'Concrete step-by-step action for developer' }
-          },
-          required: ['service', 'severity', 'affectedUser', 'summary', 'rootCause', 'suggestedFix']
-        }
-      }
+      },
     });
 
-    const parsedAnalysis = JSON.parse(response.text || '{}');
+    const triageText = aiResponse.text();
+    if (!triageText) {
+      throw new Error('Gemini returnerede et tomt svar');
+    }
 
-    // 3. Gem hændelsen knyttet til det specifikke projekt
-    await supabase.from('webhook_events').insert({
-      project_id: project.id,
-      service: parsedAnalysis.service,
-      severity: parsedAnalysis.severity,
-      affected_user: parsedAnalysis.affectedUser,
-      summary: parsedAnalysis.summary,
-      root_cause: parsedAnalysis.rootCause,
-      suggested_fix: parsedAnalysis.suggestedFix,
-      raw_payload: rawPayload
-    });
+    const triage = JSON.parse(triageText);
 
-    // 4. Send Slack-alarm
-    const targetSlackUrl = project.slack_webhook_url || process.env.SLACK_WEBHOOK_URL;
-    if (targetSlackUrl) {
-      await sendToSlack(parsedAnalysis, targetSlackUrl);
+    // 3. Gem hændelsen i Supabase
+    const { data: savedEvent, error: dbError } = await supabase
+      .from('webhook_events')
+      .insert({
+        project_id: project.id,
+        service: triage.service || 'Unknown',
+        severity: triage.severity || 'MEDIUM',
+        affected_user: triage.affected_user || 'N/A',
+        summary: triage.summary || '',
+        root_cause: triage.root_cause || '',
+        suggested_fix: triage.suggested_fix || '',
+        raw_payload: payload
+      })
+      .select()
+      .single();
+
+    if (dbError) {
+      console.error('Database Error:', dbError);
+    }
+
+    // 4. Send Slack Notifikation
+    const slackUrl = project.slack_webhook_url || process.env.SLACK_WEBHOOK_URL;
+    if (slackUrl) {
+      const color = triage.severity === 'CRITICAL' ? '#E01E5A' : triage.severity === 'HIGH' ? '#ECB22E' : '#2EB67D';
+      const slackMessage = {
+        attachments: [
+          {
+            color: color,
+            blocks: [
+              {
+                type: 'header',
+                text: {
+                  type: 'plain_text',
+                  text: `🚨 [${triage.severity}] ${triage.service} Incident: ${project.name}`,
+                  emoji: true
+                }
+              },
+              {
+                type: 'section',
+                fields: [
+                  { type: 'mrkdwn', text: `*Affected User:*\n\`${triage.affected_user}\`` },
+                  { type: 'mrkdwn', text: `*Project:*\n${project.name}` }
+                ]
+              },
+              {
+                type: 'section',
+                text: { type: 'mrkdwn', text: `*Summary:*\n${triage.summary}` }
+              },
+              {
+                type: 'section',
+                text: { type: 'mrkdwn', text: `*Root Cause:*\n${triage.root_cause}` }
+              },
+              {
+                type: 'section',
+                text: { type: 'mrkdwn', text: `*Suggested Fix:*\n${triage.suggested_fix}` }
+              }
+            ]
+          }
+        ]
+      };
+
+      await fetch(slackUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(slackMessage)
+      }).catch(err => console.error('Slack Send Error:', err));
+    }
+
+    // 5. Send Discord Notifikation (Rich Embed)
+    const discordUrl = project.discord_webhook_url;
+    if (discordUrl) {
+      const discordColor = triage.severity === 'CRITICAL' ? 14688858 : triage.severity === 'HIGH' ? 15512110 : 3061373;
+      const discordMessage = {
+        embeds: [
+          {
+            title: `🚨 [${triage.severity}] ${triage.service} Incident: ${project.name}`,
+            color: discordColor,
+            fields: [
+              { name: '👤 Affected User', value: `\`${triage.affected_user}\``, inline: true },
+              { name: '📁 Project', value: project.name, inline: true },
+              { name: '📋 Summary', value: triage.summary },
+              { name: '🔍 Root Cause', value: triage.root_cause },
+              { name: '💡 Suggested Fix', value: triage.suggested_fix }
+            ],
+            footer: {
+              text: 'HookLens AI Triage Engine'
+            },
+            timestamp: new Date().toISOString()
+          }
+        ]
+      };
+
+      await fetch(discordUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(discordMessage)
+      }).catch(err => console.error('Discord Send Error:', err));
     }
 
     return NextResponse.json({
       success: true,
-      data: parsedAnalysis
+      data: savedEvent || triage
     });
 
   } catch (error: any) {
     console.error('Ingest Error:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Internal Server Error' },
+      { success: false, error: error.message || 'Internt systemfejl' },
       { status: 500 }
     );
   }
