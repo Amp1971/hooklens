@@ -1,9 +1,30 @@
+import { supabase } from '@/app/lib/supabase';
+import { useRouter } from 'next/navigation';
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 
 export default function LandingPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    // 1. Tjek om URL har Supabase tokens (#access_token=... eller ?code=...)
+    if (window.location.hash.includes('access_token') || window.location.search.includes('code=')) {
+      window.location.href = '/auth/callback' + window.location.search + window.location.hash;
+      return;
+    }
+
+    // 2. Tjek om brugeren allerede er logget ind
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        router.push('/dashboard');
+      }
+    };
+    checkSession();
+  }, [router]);
+
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
 
   const handleCheckout = async (plan: 'starter' | 'growth' | 'scale') => {
