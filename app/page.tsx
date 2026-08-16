@@ -42,6 +42,9 @@ export default function LandingPage() {
           <Link href="#pricing" className="text-sm font-medium text-slate-400 hover:text-white transition">
             Pricing
           </Link>
+          <Link href="/blog" className="text-sm font-medium text-slate-400 hover:text-white transition">
+            Blog
+          </Link>
           <Link href="/login" className="text-sm font-medium text-slate-400 hover:text-white transition">
             Log in
           </Link>
@@ -93,7 +96,7 @@ export default function LandingPage() {
         <div className="text-center space-y-4 mb-16">
           <h2 className="text-3xl font-bold text-white">Simple, transparent pricing</h2>
           <p className="text-slate-400 text-sm max-w-md mx-auto">
-            Choose the plan that fits your webhook volume and infrastructure.
+            Choose the plan that fits your webhook volume and infrastructure. All plans include a 14-day free trial.
           </p>
         </div>
 
@@ -108,6 +111,7 @@ export default function LandingPage() {
                 <span className="text-slate-400 text-xs">/month</span>
               </div>
               <ul className="space-y-2.5 text-xs text-slate-300 pt-4 border-t border-slate-800">
+                <li className="flex items-center gap-2">✓ 14-day free trial</li>
                 <li className="flex items-center gap-2">✓ Up to 10,000 events/mo</li>
                 <li className="flex items-center gap-2">✓ 3 active endpoints</li>
                 <li className="flex items-center gap-2">✓ Instant Slack alerts</li>
@@ -119,7 +123,7 @@ export default function LandingPage() {
               disabled={loadingPlan === 'starter'}
               className="w-full py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold text-center transition block disabled:opacity-50"
             >
-              {loadingPlan === 'starter' ? 'Redirecting to Stripe...' : 'Choose Starter'}
+              {loadingPlan === 'starter' ? 'Redirecting to Stripe...' : 'Start 14-Day Free Trial'}
             </button>
           </div>
 
@@ -136,6 +140,7 @@ export default function LandingPage() {
                 <span className="text-slate-400 text-xs">/month</span>
               </div>
               <ul className="space-y-2.5 text-xs text-slate-300 pt-4 border-t border-slate-800">
+                <li className="flex items-center gap-2">✓ 14-day free trial</li>
                 <li className="flex items-center gap-2">✓ Up to 100,000 events/mo</li>
                 <li className="flex items-center gap-2">✓ Unlimited endpoints</li>
                 <li className="flex items-center gap-2">✓ Slack & Discord alerts</li>
@@ -148,7 +153,7 @@ export default function LandingPage() {
               disabled={loadingPlan === 'growth'}
               className="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold text-center transition block shadow-lg shadow-blue-500/20 disabled:opacity-50"
             >
-              {loadingPlan === 'growth' ? 'Redirecting to Stripe...' : 'Choose Growth'}
+              {loadingPlan === 'growth' ? 'Redirecting to Stripe...' : 'Start 14-Day Free Trial'}
             </button>
           </div>
 
@@ -162,6 +167,7 @@ export default function LandingPage() {
                 <span className="text-slate-400 text-xs">/month</span>
               </div>
               <ul className="space-y-2.5 text-xs text-slate-300 pt-4 border-t border-slate-800">
+                <li className="flex items-center gap-2">✓ 14-day free trial</li>
                 <li className="flex items-center gap-2">✓ Unlimited events</li>
                 <li className="flex items-center gap-2">✓ Dedicated webhook ingest latency</li>
                 <li className="flex items-center gap-2">✓ Slack, Discord & Webhook dispatch</li>
@@ -174,15 +180,20 @@ export default function LandingPage() {
               disabled={loadingPlan === 'scale'}
               className="w-full py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold text-center transition block disabled:opacity-50"
             >
-              {loadingPlan === 'scale' ? 'Redirecting to Stripe...' : 'Choose Scale'}
+              {loadingPlan === 'scale' ? 'Redirecting to Stripe...' : 'Start 14-Day Free Trial'}
             </button>
           </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="max-w-7xl mx-auto px-6 py-10 border-t border-slate-900 text-center text-xs text-slate-500">
-        &copy; {new Date().getFullYear()} HookLens. All rights reserved.
+      <footer className="max-w-7xl mx-auto px-6 py-10 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+        <div>&copy; {new Date().getFullYear()} HookLens. All rights reserved.</div>
+        <div className="flex items-center gap-6">
+          <Link href="/blog" className="hover:text-slate-400 transition">Blog & Guides</Link>
+          <Link href="#pricing" className="hover:text-slate-400 transition">Pricing</Link>
+          <Link href="/login" className="hover:text-slate-400 transition">Log in</Link>
+        </div>
       </footer>
     </div>
   );
