@@ -151,5 +151,147 @@ With **HookLens**, you transform thousands of fragmented log lines into a clean 
 
 👉 **Ready to stop debugging logs?** Create your free account at [usehooklens.com](https://usehooklens.com) and take full control of your webhooks in under 2 minutes.
     `
+  },
+  {
+    slug: 'how-to-fix-stripe-signature-verification-failed-nextjs',
+    title: 'How to Fix "Stripe Webhook Signature Verification Failed" in Next.js App Router',
+    excerpt: 'The most common Stripe webhook error explained step-by-step. Learn why Next.js body parsers break HMAC-SHA256 signatures and how to handle raw buffers cleanly.',
+    date: 'August 14, 2026',
+    readTime: '4 min read',
+    author: {
+      name: 'Allan M. Pedersen',
+      role: 'Founder @ UseHookLens'
+    },
+    tags: ['Stripe', 'Next.js', 'Security', 'TypeScript'],
+    content: `
+If you are building with Next.js App Router and Stripe, you have almost certainly encountered the dreaded error: **\`Webhook signature verification failed\`**.
+
+Even when your \`STRIPE_WEBHOOK_SECRET\` is completely correct, Stripe rejects incoming requests with an HTTP 400 Bad Request.
+
+---
+
+### Why Does This Error Happen?
+
+Stripe calculates an HMAC-SHA256 hash using the exact byte representation of the raw payload and compares it to the hash in the \`Stripe-Signature\` header.
+
+If your web server parses the JSON body into an object and then re-stringifies it, the byte order and spacing change. Even a single added whitespace character results in a completely different hash digest.
+
+---
+
+### The Fix in Next.js App Router (\`app/api/webhooks/stripe/route.ts\`)
+
+In Next.js App Router, you should **never** use \`req.json()\` before validating signatures. Use \`req.text()\` to capture the untouched raw text string:
+
+\`\`\`typescript
+import { headers } from 'next/headers';
+import { NextResponse } from 'next/server';
+import Stripe from 'stripe';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: '2023-10-16',
+});
+
+export async function POST(req: Request) {
+  const body = await req.text(); // <-- Must be raw text!
+  const headerList = await headers();
+  const signature = headerList.get('stripe-signature');
+
+  if (!signature) {
+    return NextResponse.json({ error: 'Missing signature' }, { status: 400 });
+  }
+
+  let event: Stripe.Event;
+
+  try {
+    event = stripe.webhooks.constructEvent(
+      body,
+      signature,
+      process.env.STRIPE_WEBHOOK_SECRET!
+    );
+  } catch (err: any) {
+    console.error('Webhook signature verification failed:', err.message);
+    return NextResponse.json({ error: err.message }, { status: 400 });
+  }
+
+  // Handle verified events
+  switch (event.type) {
+    case 'checkout.session.completed':
+      // Fulfill order
+      break;
+    default:
+      console.log('Unhandled event type', event.type);
+  }
+
+  return NextResponse.json({ received: true }, { status: 200 });
+}
+\`\`\`
+
+---
+
+### How HookLens Helps
+
+HookLens automatically verifies and archives incoming payloads and signatures in real time. If a signature mismatch occurs, HookLens alerts your team immediately with exact diagnostic feedback.
+    `
+  },
+  {
+    slug: 'shopify-webhook-best-practices-idempotency',
+    title: 'Shopify Webhooks at Scale: Handling Idempotency, Retries, and 504 Timeouts',
+    excerpt: 'Shopify guarantees at-least-once delivery. Discover how to architect idempotent workers that prevent duplicate order processing and eliminate HTTP 504 gateway timeouts.',
+    date: 'August 11, 2026',
+    readTime: '5 min read',
+    author: {
+      name: 'Allan M. Pedersen',
+      role: 'Founder @ UseHookLens'
+    },
+    tags: ['Shopify', 'Architecture', 'Idempotency', 'Queues'],
+    content: `
+When your Shopify store processes thousands of orders per hour, handling webhooks like \`orders/create\` or \`inventory_levels/update\` requires bulletproof architecture.
+
+Shopify enforces two strict rules:
+1. **At-Least-Once Delivery:** Events may be delivered multiple times.
+2. **5-Second Timeout:** If your endpoint does not respond with \`200 OK\` within 5 seconds, Shopify marks the request as failed and retries with exponential backoff.
+
+---
+
+### 1. Guarding Against Duplicate Processing with Idempotency Keys
+
+Because Shopify may dispatch the same event ID more than once due to network retries, your database must track processed event identifiers:
+
+\`\`\`typescript
+const eventId = req.headers.get('x-shopify-webhook-id');
+
+// Check if already processed
+const existing = await db.processedEvents.findUnique({
+  where: { id: eventId }
+});
+
+if (existing) {
+  // Acknowledge immediately to stop Shopify retries
+  return NextResponse.json({ status: 'already_processed' }, { status: 200 });
+}
+
+// Mark as processing
+await db.processedEvents.create({
+  data: { id: eventId, processedAt: new Date() }
+});
+\`\`\`
+
+---
+
+### 2. Eliminating 504 Gateway Timeouts
+
+Never perform synchronous heavy operations (generating PDFs, sending marketing emails, calling 3rd-party ERPs) inside the webhook handler route. 
+
+Instead, follow the **Ingest & Queue** pattern:
+1. Validate the \`X-Shopify-Hmac-Sha256\` signature.
+2. Push the payload to an asynchronous worker queue (e.g. BullMQ, Redis, SQS).
+3. Return \`HTTP 200 OK\` in under 50 milliseconds.
+
+---
+
+### Monitor Everything with HookLens
+
+With HookLens, you can monitor end-to-end Shopify webhook latency, spot retry spikes, and triage broken fulfillment events before your customers notice.
+    `
   }
 ];
