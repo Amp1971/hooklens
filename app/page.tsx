@@ -214,7 +214,8 @@ export default function LandingPage() {
         <div className="flex items-center gap-6">
           <Link href="/blog" className="hover:text-slate-400 transition">Blog & Guides</Link>
           <Link href="#pricing" className="hover:text-slate-400 transition">Pricing</Link>
-          <Link href="/login" className="hover:text-slate-400 transition">Log in</Link>
+          <Link href="/changelog" className="text-sm font-medium text-slate-400 hover:text-white transition">Changelog</Link>
+            <Link href="/login" className="hover:text-slate-400 transition">Log in</Link>
         </div>
       </footer>
     </div>
