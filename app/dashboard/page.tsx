@@ -33,6 +33,9 @@ export default function DashboardPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Copy URL state
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [projectName, setProjectName] = useState('');
@@ -61,6 +64,15 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  const copyToClipboard = (apiKey: string) => {
+    const url = `https://usehooklens.com/api/ingest/${apiKey}`;
+    navigator.clipboard.writeText(url);
+    setCopiedKey(apiKey);
+    setTimeout(() => {
+      setCopiedKey(null);
+    }, 2000);
+  };
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -153,19 +165,35 @@ export default function DashboardPage() {
         <section className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Your Webhook Ingest Endpoints</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {projects.map((proj) => (
-              <div key={proj.id} className="bg-slate-950/70 border border-slate-800 rounded-lg p-3.5 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-white text-xs">{proj.name}</span>
-                  <span className="text-[10px] font-mono bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20">
-                    {proj.api_key}
-                  </span>
+            {projects.map((proj) => {
+              const isCopied = copiedKey === proj.api_key;
+              return (
+                <div key={proj.id} className="bg-slate-950/70 border border-slate-800 rounded-lg p-3.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-white text-xs">{proj.name}</span>
+                    <span className="text-[10px] font-mono bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20">
+                      {proj.api_key}
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 text-[11px] font-mono text-slate-400 bg-slate-900/90 p-2 rounded border border-slate-800/80 truncate">
+                      https://usehooklens.com/api/ingest/{proj.api_key}
+                    </div>
+                    <button
+                      onClick={() => copyToClipboard(proj.api_key)}
+                      className={`text-xs font-medium px-3 py-2 rounded transition flex items-center gap-1.5 shrink-0 ${
+                        isCopied
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                      }`}
+                    >
+                      {isCopied ? '✓ Copied!' : '📋 Copy URL'}
+                    </button>
+                  </div>
                 </div>
-                <div className="text-[11px] font-mono text-slate-400 bg-slate-900/90 p-2 rounded border border-slate-800/80 break-all select-all">
-                  https://usehooklens.com/api/ingest/{proj.api_key}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
 
@@ -287,8 +315,16 @@ export default function DashboardPage() {
                 <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 rounded-xl text-xs space-y-2">
                   <p className="font-bold text-sm">🎉 Project created successfully!</p>
                   <p>Use the following ingest URL in your webhook provider settings:</p>
-                  <div className="bg-slate-950 p-2.5 rounded font-mono text-[11px] text-white select-all break-all border border-emerald-500/30">
-                    https://usehooklens.com/api/ingest/{createdProject.api_key}
+                  <div className="flex items-center gap-2 pt-1">
+                    <div className="flex-1 bg-slate-950 p-2.5 rounded font-mono text-[11px] text-white truncate border border-emerald-500/30">
+                      https://usehooklens.com/api/ingest/{createdProject.api_key}
+                    </div>
+                    <button
+                      onClick={() => copyToClipboard(createdProject.api_key)}
+                      className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold shrink-0 transition"
+                    >
+                      {copiedKey === createdProject.api_key ? '✓ Copied' : 'Copy'}
+                    </button>
                   </div>
                 </div>
                 <button

@@ -1,0 +1,25 @@
+{
+  "topic": "orders/cancelled",
+  "shop_domain": "nordic-apparel.myshopify.com",
+  "id": 8209849382103,
+  "email": "sarah.connor@cyberdyne.io",
+  "created_at": "2026-08-16T11:15:00+02:00",
+  "financial_status": "refunded",
+  "cancel_reason": "inventory",
+  "cancelled_at": "2026-08-16T11:15:30+02:00",
+  "line_items": [
+    {
+      "id": 14285714285,
+      "title": "Minimalist Merino Wool Sweater - Forest Green / M",
+      "quantity": 1,
+      "price": "129.00",
+      "sku": "MMW-GRN-M",
+      "fulfillment_status": null
+    }
+  ],
+  "error_details": {
+    "code": "OUT_OF_STOCK_OVERALLOCATION",
+    "location_id": "loc_cph_wh_01",
+    "message": "Inventory for SKU MMW-GRN-M dropped below 0 during final allocation lock. Webhook sync to ERP delayed."
+  }
+}
