@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '');
+const stripeSecret = process.env.STRIPE_SECRET_KEY || '';
+const stripe = new Stripe(stripeSecret, {
+  apiVersion: '2025-01-27.acacia' as any,
+});
 
 export async function POST(req: Request) {
   try {
@@ -12,9 +15,9 @@ export async function POST(req: Request) {
     if (plan === 'growth') priceId = process.env.STRIPE_PRICE_GROWTH || '';
     if (plan === 'scale') priceId = process.env.STRIPE_PRICE_SCALE || '';
 
-    if (!process.env.STRIPE_SECRET_KEY) {
+    if (!stripeSecret) {
       return NextResponse.json(
-        { error: 'STRIPE_SECRET_KEY is not configured.' },
+        { error: 'STRIPE_SECRET_KEY environment variable is not configured.' },
         { status: 500 }
       );
     }
