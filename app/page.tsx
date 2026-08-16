@@ -209,13 +209,62 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="max-w-7xl mx-auto px-6 py-10 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
-        <div>&copy; {new Date().getFullYear()} HookLens. All rights reserved.</div>
-        <div className="flex items-center gap-6">
-          <Link href="/blog" className="hover:text-slate-400 transition">Blog & Guides</Link>
-          <Link href="#pricing" className="hover:text-slate-400 transition">Pricing</Link>
-          <Link href="/changelog" className="text-sm font-medium text-slate-400 hover:text-white transition">Changelog</Link>
-            <Link href="/login" className="hover:text-slate-400 transition">Log in</Link>
+            {/* Footer */}
+      <footer className="border-t border-slate-900 bg-slate-950 py-16 text-slate-400 text-sm">
+        <div className="max-w-6xl mx-auto px-6 grid grid-cols-1 md:grid-cols-4 gap-10">
+          <div className="space-y-3">
+            <Link href="/" className="text-lg font-black tracking-tight text-white inline-block">
+              Hook<span className="text-blue-500">Lens</span>
+            </Link>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Real-time webhook triage & automated root-cause analysis for modern engineering teams.
+            </p>
+          </div>
+
+          <div>
+            <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider mb-3">Product</h4>
+            <ul className="space-y-2 text-xs">
+              <li><Link href="/changelog" className="hover:text-white transition">Changelog</Link></li>
+              <li><Link href="/login" className="hover:text-white transition">Sign In / Dashboard</Link></li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider mb-3">Integrations</h4>
+            <ul className="space-y-2 text-xs">
+              <li><span className="text-slate-300">Stripe Webhooks</span></li>
+              <li><span className="text-slate-300">Shopify Webhooks</span></li>
+              <li><span className="text-slate-500">GitHub (Coming Soon)</span></li>
+              <li><span className="text-slate-500">Twilio (Coming Soon)</span></li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider mb-3">Contact & Company</h4>
+            <div className="space-y-1.5 text-xs text-slate-400">
+              <p className="font-semibold text-white">UseHookLens</p>
+              <p>Voldgade 17, 1.</p>
+              <p>6400 Sønderborg, Denmark</p>
+              <p className="pt-2">
+                <a href="mailto:allan@usehooklens.com" className="text-blue-400 hover:underline">
+                  allan@usehooklens.com
+                </a>
+              </p>
+              <p>
+                <a href="tel:+4591250614" className="text-slate-300 hover:text-white transition">
+                  +45 91 25 06 14
+                </a>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-6xl mx-auto px-6 mt-12 pt-8 border-t border-slate-900 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+          <p>© 2026 UseHookLens. All rights reserved.</p>
+          <div className="flex items-center gap-6">
+            <Link href="/changelog" className="hover:text-slate-400 transition">Changelog</Link>
+            <Link href="/login" className="hover:text-slate-400 transition">Log In</Link>
+          </div>
         </div>
       </footer>
     </div>
