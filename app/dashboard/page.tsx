@@ -61,18 +61,7 @@ export default function DashboardPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [createdProject, setCreatedProject] = useState<Project | null>(null);
 
-  const checkAuthAndFetch = async () => {
-    setLoading(true);
-
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) {
-      router.push('/login');
-      return;
-    }
-
-    const user = session.user;
+  const loadUserData = async (user: any) => {
     setCurrentUser(user);
 
     const adminCheck = !!user.email && ADMIN_EMAILS.includes(user.email.toLowerCase());
@@ -109,7 +98,37 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
-    checkAuthAndFetch();
+    let mounted = true;
+
+    const initAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user && mounted) {
+        await loadUserData(session.user);
+      } else if (!session) {
+        // Giv et kort øjeblik før eventuel redirect, hvis token parses
+        const timeout = setTimeout(() => {
+          if (mounted && !currentUser) {
+            router.push('/login');
+          }
+        }, 1500);
+        return () => clearTimeout(timeout);
+      }
+    };
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user && mounted) {
+        await loadUserData(session.user);
+      } else if (event === 'SIGNED_OUT' && mounted) {
+        router.push('/login');
+      }
+    });
+
+    initAuth();
+
+    return () => {
+      mounted = false;
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
   const handleLogout = async () => {
