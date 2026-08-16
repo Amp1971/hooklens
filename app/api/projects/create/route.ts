@@ -2,19 +2,15 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/app/lib/supabase';
 import crypto from 'crypto';
 
-export async function POST(request: Request) {
+export async function POST(req: Request) {
   try {
-    const { name, slackWebhookUrl, discordWebhookUrl } = await request.json();
+    const { name, slackWebhookUrl, discordWebhookUrl, userId } = await req.json();
 
-    if (!name || name.trim() === '') {
-      return NextResponse.json(
-        { success: false, error: 'Project name is required.' },
-        { status: 400 }
-      );
+    if (!name || typeof name !== 'string') {
+      return NextResponse.json({ error: 'Project name is required' }, { status: 400 });
     }
 
-    const randomSuffix = crypto.randomBytes(8).toString('hex');
-    const apiKey = `hk_live_${randomSuffix}`;
+    const apiKey = `hl_${crypto.randomBytes(12).toString('hex')}`;
 
     const { data: project, error } = await supabase
       .from('projects')
@@ -22,25 +18,18 @@ export async function POST(request: Request) {
         name: name.trim(),
         api_key: apiKey,
         slack_webhook_url: slackWebhookUrl?.trim() || null,
-        discord_webhook_url: discordWebhookUrl?.trim() || null
+        discord_webhook_url: discordWebhookUrl?.trim() || null,
+        user_id: userId || null
       })
-      .select()
+      .select('*')
       .single();
 
     if (error) {
-      throw error;
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({
-      success: true,
-      project
-    });
-
-  } catch (error: any) {
-    console.error('Create Project Error:', error);
-    return NextResponse.json(
-      { success: false, error: error.message || 'Failed to create project.' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: true, project });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
