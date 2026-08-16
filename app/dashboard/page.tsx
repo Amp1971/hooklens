@@ -9,6 +9,7 @@ interface WebhookEvent {
   created_at: string;
   service: string;
   severity: string;
+  status: string;
   affected_user: string;
   summary: string;
   root_cause: string;
@@ -43,6 +44,7 @@ export default function DashboardPage() {
   const [selectedSeverity, setSelectedSeverity] = useState<string>('ALL');
   const [selectedProject, setSelectedProject] = useState<string>('ALL');
   const [selectedService, setSelectedService] = useState<string>('ALL');
+  const [showResolved, setShowResolved] = useState<boolean>(false);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -83,6 +85,26 @@ export default function DashboardPage() {
     }, 2000);
   };
 
+  const toggleIncidentStatus = async (id: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'resolved' ? 'open' : 'resolved';
+    
+    // Optimistisk UI-opdatering
+    setEvents((prev) =>
+      prev.map((e) => (e.id === id ? { ...e, status: newStatus } : e))
+    );
+
+    try {
+      await fetch(`/api/incidents/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+    } catch (err) {
+      console.error('Error toggling status', err);
+      fetchData(); // Rollback ved fejl
+    }
+  };
+
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!projectName.trim()) return;
@@ -116,31 +138,34 @@ export default function DashboardPage() {
     }
   };
 
-  // Dynamiske services til dropdown
   const uniqueServices = useMemo(() => {
-    const services = Array.from(new Set(events.map((e) => e.service).filter(Boolean)));
-    return services;
+    return Array.from(new Set(events.map((e) => e.service).filter(Boolean)));
   }, [events]);
 
-  // Filtreringslogik
   const filteredEvents = useMemo(() => {
     return events.filter((evt) => {
-      // 1. Severity filter
+      // 1. Skjul løste hændelser, medmindre togglen er aktiv
+      const status = evt.status || 'open';
+      if (!showResolved && status === 'resolved') {
+        return false;
+      }
+
+      // 2. Severity filter
       if (selectedSeverity !== 'ALL' && evt.severity !== selectedSeverity) {
         return false;
       }
 
-      // 2. Project filter
+      // 3. Project filter
       if (selectedProject !== 'ALL' && evt.projects?.api_key !== selectedProject) {
         return false;
       }
 
-      // 3. Service filter
+      // 4. Service filter
       if (selectedService !== 'ALL' && evt.service?.toLowerCase() !== selectedService.toLowerCase()) {
         return false;
       }
 
-      // 4. Fritekst søgning
+      // 5. Fritekst søgning
       if (searchQuery.trim() !== '') {
         const query = searchQuery.toLowerCase();
         const matchesUser = evt.affected_user?.toLowerCase().includes(query);
@@ -155,19 +180,10 @@ export default function DashboardPage() {
 
       return true;
     });
-  }, [events, selectedSeverity, selectedProject, selectedService, searchQuery]);
+  }, [events, showResolved, selectedSeverity, selectedProject, selectedService, searchQuery]);
 
-  const hasActiveFilters = searchQuery !== '' || selectedSeverity !== 'ALL' || selectedProject !== 'ALL' || selectedService !== 'ALL';
-
-  const resetFilters = () => {
-    setSearchQuery('');
-    setSelectedSeverity('ALL');
-    setSelectedProject('ALL');
-    setSelectedService('ALL');
-  };
-
-  const totalEvents = events.length;
-  const criticalEvents = events.filter(e => e.severity === 'CRITICAL' || e.severity === 'HIGH').length;
+  const openIncidentsCount = events.filter((e) => (e.status || 'open') === 'open').length;
+  const criticalEvents = events.filter((e) => (e.status || 'open') === 'open' && (e.severity === 'CRITICAL' || e.severity === 'HIGH')).length;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans p-6 md:p-10">
@@ -209,11 +225,11 @@ export default function DashboardPage() {
         {/* Stats Widgets */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-            <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Total Analyzed Events</p>
-            <p className="text-3xl font-extrabold text-white mt-2">{totalEvents}</p>
+            <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Open Incidents</p>
+            <p className="text-3xl font-extrabold text-white mt-2">{openIncidentsCount}</p>
           </div>
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-            <p className="text-xs font-medium uppercase tracking-wider text-slate-400">High / Critical Alerts</p>
+            <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Critical / High (Open)</p>
             <p className="text-3xl font-extrabold text-rose-500 mt-2">{criticalEvents}</p>
           </div>
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
@@ -264,24 +280,28 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        {/* Incidents Feed with Search & Filters */}
+        {/* Incidents Feed */}
         <section className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h2 className="text-lg font-semibold text-white">Incident Stream</h2>
               <p className="text-xs text-slate-400">
-                Showing {filteredEvents.length} of {events.length} incidents
+                Showing {filteredEvents.length} {showResolved ? 'total' : 'open'} incidents
               </p>
             </div>
-            <div className="flex items-center gap-3">
-              {hasActiveFilters && (
-                <button
-                  onClick={resetFilters}
-                  className="text-xs text-rose-400 hover:text-rose-300 font-medium"
-                >
-                  ✕ Clear Filters
-                </button>
-              )}
+
+            {/* Toggle: Show / Hide Resolved */}
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 hover:border-slate-700">
+                <input
+                  type="checkbox"
+                  checked={showResolved}
+                  onChange={(e) => setShowResolved(e.target.checked)}
+                  className="rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0 cursor-pointer"
+                />
+                <span>Show Resolved</span>
+              </label>
+
               <button
                 onClick={fetchData}
                 className="text-xs text-blue-400 hover:text-blue-300 font-medium"
@@ -293,7 +313,6 @@ export default function DashboardPage() {
 
           {/* Search & Filter Bar */}
           <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {/* Free-text Search */}
             <div>
               <input
                 type="text"
@@ -304,7 +323,6 @@ export default function DashboardPage() {
               />
             </div>
 
-            {/* Severity Filter */}
             <div>
               <select
                 value={selectedSeverity}
@@ -319,7 +337,6 @@ export default function DashboardPage() {
               </select>
             </div>
 
-            {/* Project Filter */}
             <div>
               <select
                 value={selectedProject}
@@ -335,7 +352,6 @@ export default function DashboardPage() {
               </select>
             </div>
 
-            {/* Service Filter */}
             <div>
               <select
                 value={selectedService}
@@ -357,17 +373,21 @@ export default function DashboardPage() {
             <div className="text-center py-12 text-slate-500 text-sm">Fetching incidents...</div>
           ) : filteredEvents.length === 0 ? (
             <div className="text-center py-16 bg-slate-900/50 border border-slate-800 rounded-xl border-dashed">
-              <p className="text-slate-400 font-medium">No incidents matched your criteria.</p>
-              <p className="text-xs text-slate-500 mt-1">Try clearing your filters or search query.</p>
+              <p className="text-slate-400 font-medium">All caught up! No open incidents found.</p>
+              <p className="text-xs text-slate-500 mt-1">Check "Show Resolved" if you want to inspect earlier resolved items.</p>
             </div>
           ) : (
             <div className="space-y-4">
               {filteredEvents.map((evt) => {
+                const isResolved = evt.status === 'resolved';
                 const isCritical = evt.severity === 'CRITICAL' || evt.severity === 'HIGH';
+
                 return (
                   <div
                     key={evt.id}
-                    className="bg-slate-900 border border-slate-800 rounded-xl p-5 hover:border-slate-700 transition space-y-4 shadow-sm"
+                    className={`bg-slate-900 border rounded-xl p-5 transition space-y-4 shadow-sm ${
+                      isResolved ? 'border-slate-800/40 opacity-60 bg-slate-950/40' : 'border-slate-800 hover:border-slate-700'
+                    }`}
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
                       <div className="flex items-center gap-3">
@@ -394,16 +414,29 @@ export default function DashboardPage() {
                           </span>
                         )}
                       </div>
-                      <time className="text-xs text-slate-400">
-                        {new Date(evt.created_at).toLocaleString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          second: '2-digit'
-                        })}
-                      </time>
+
+                      <div className="flex items-center gap-3">
+                        <time className="text-xs text-slate-400">
+                          {new Date(evt.created_at).toLocaleString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </time>
+
+                        {/* Resolve / Reopen Button */}
+                        <button
+                          onClick={() => toggleIncidentStatus(evt.id, evt.status || 'open')}
+                          className={`text-xs font-medium px-2.5 py-1 rounded-md border transition flex items-center gap-1.5 ${
+                            isResolved
+                              ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+                              : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
+                          }`}
+                        >
+                          {isResolved ? '↩ Reopen' : '✓ Resolve'}
+                        </button>
+                      </div>
                     </div>
 
                     <div className="space-y-2">
@@ -512,9 +545,6 @@ export default function DashboardPage() {
                     onChange={(e) => setDiscordUrl(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
                   />
-                  <p className="text-[11px] text-slate-500">
-                    You can provide Slack, Discord, or both.
-                  </p>
                 </div>
 
                 <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
