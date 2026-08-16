@@ -13,12 +13,10 @@ export default function BlogPostPage({ params }: { params: Promise<{ slug: strin
     notFound();
   }
 
-  // Enkel opdeling til sektioner og afsnit
   const paragraphs = post.content.split('\n\n');
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-blue-500 selection:text-white">
-      {/* Navigation */}
       <nav className="border-b border-slate-900 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
           <Link href="/" className="text-xl font-black tracking-tighter hover:opacity-80 transition">
@@ -33,14 +31,12 @@ export default function BlogPostPage({ params }: { params: Promise<{ slug: strin
       </nav>
 
       <article className="max-w-3xl mx-auto px-6 py-20">
-        {/* Breadcrumb */}
         <div className="mb-8">
           <Link href="/blog" className="text-xs text-slate-500 hover:text-slate-300 transition">
             &larr; Back to all articles
           </Link>
         </div>
 
-        {/* Header */}
         <header className="space-y-6 pb-12 border-b border-slate-900">
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-xs font-mono text-slate-500 uppercase tracking-widest">{post.date}</span>
@@ -67,7 +63,6 @@ export default function BlogPostPage({ params }: { params: Promise<{ slug: strin
           </div>
         </header>
 
-        {/* Content Body */}
         <div className="py-12 space-y-6 text-slate-300 leading-relaxed text-base">
           {paragraphs.map((p, idx) => {
             const text = p.trim();
@@ -99,7 +94,6 @@ export default function BlogPostPage({ params }: { params: Promise<{ slug: strin
           })}
         </div>
 
-        {/* Bottom CTA Box */}
         <div className="mt-12 p-8 rounded-3xl bg-blue-950/30 border border-blue-500/30 text-center space-y-4 shadow-2xl">
           <h3 className="text-xl font-bold text-white tracking-tight">
             Diagnose Failed Webhooks in Real Time
@@ -118,7 +112,6 @@ export default function BlogPostPage({ params }: { params: Promise<{ slug: strin
         </div>
       </article>
 
-      {/* Footer */}
       <footer className="py-16 border-t border-slate-900 text-center text-xs text-slate-500">
         <p>© 2026 UseHookLens. All rights reserved.</p>
       </footer>
