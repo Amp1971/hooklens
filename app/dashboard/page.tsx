@@ -61,8 +61,18 @@ export default function DashboardPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [createdProject, setCreatedProject] = useState<Project | null>(null);
 
-  const loadUserData = async (user: any) => {
-    setCurrentUser(user);
+  const checkAuthAndFetch = async (forcedUser?: any) => {
+    let user = forcedUser || currentUser;
+
+    if (!user) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setLoading(false);
+        return;
+      }
+      user = session.user;
+      setCurrentUser(user);
+    }
 
     const adminCheck = !!user.email && ADMIN_EMAILS.includes(user.email.toLowerCase());
     setIsAdmin(adminCheck);
@@ -100,30 +110,33 @@ export default function DashboardPage() {
   useEffect(() => {
     let mounted = true;
 
-    const initAuth = async () => {
+    const init = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user && mounted) {
-        await loadUserData(session.user);
-      } else if (!session) {
-        // Giv et kort øjeblik før eventuel redirect, hvis token parses
-        const timeout = setTimeout(() => {
-          if (mounted && !currentUser) {
+        await checkAuthAndFetch(session.user);
+      } else {
+        // Giv et kort øjeblik før redirect, så magic link / token når at blive sat
+        setTimeout(async () => {
+          if (!mounted) return;
+          const { data: { session: retrySession } } = await supabase.auth.getSession();
+          if (!retrySession) {
             router.push('/login');
+          } else {
+            await checkAuthAndFetch(retrySession.user);
           }
-        }, 1500);
-        return () => clearTimeout(timeout);
+        }, 1200);
       }
     };
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user && mounted) {
-        await loadUserData(session.user);
+        await checkAuthAndFetch(session.user);
       } else if (event === 'SIGNED_OUT' && mounted) {
         router.push('/login');
       }
     });
 
-    initAuth();
+    init();
 
     return () => {
       mounted = false;
