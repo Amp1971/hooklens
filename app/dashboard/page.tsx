@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/app/lib/supabase';
 
 interface WebhookEvent {
@@ -17,8 +18,10 @@ interface WebhookEvent {
   raw_payload: any;
   project_id?: string;
   projects?: {
+    id: string;
     name: string;
     api_key: string;
+    user_id: string | null;
   };
 }
 
@@ -29,9 +32,12 @@ interface Project {
   slack_webhook_url: string | null;
   discord_webhook_url: string | null;
   created_at: string;
+  user_id: string | null;
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const [events, setEvents] = useState<WebhookEvent[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,27 +63,54 @@ export default function DashboardPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [createdProject, setCreatedProject] = useState<Project | null>(null);
 
-  const fetchData = async () => {
+  const checkAuthAndFetch = async () => {
     setLoading(true);
 
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      router.push('/login');
+      return;
+    }
+
+    const user = session.user;
+    setCurrentUser(user);
+
+    // Hent projekter tilhørende brugeren eller eksisterende demo-projekter
     const { data: projectData } = await supabase
       .from('projects')
       .select('*')
+      .or(`user_id.eq.${user.id},user_id.is.null`)
       .order('created_at', { ascending: false });
 
+    const currentProjects = projectData || [];
+    setProjects(currentProjects);
+
+    const projectKeys = currentProjects.map((p) => p.api_key);
+
+    // Hent incidents tilknyttet brugerens projekter
     const { data: eventData } = await supabase
       .from('webhook_events')
-      .select('*, projects(name, api_key)')
+      .select('*, projects(id, name, api_key, user_id)')
       .order('created_at', { ascending: false });
 
-    if (projectData) setProjects(projectData);
-    if (eventData) setEvents(eventData as any);
+    if (eventData) {
+      const userEvents = (eventData as any[]).filter(
+        (e) => !e.projects || projectKeys.includes(e.projects.api_key)
+      );
+      setEvents(userEvents);
+    }
+
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchData();
+    checkAuthAndFetch();
   }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push('/login');
+  };
 
   const copyToClipboard = (apiKey: string) => {
     const url = `https://usehooklens.com/api/ingest/${apiKey}`;
@@ -90,7 +123,7 @@ export default function DashboardPage() {
 
   const toggleIncidentStatus = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === 'resolved' ? 'open' : 'resolved';
-    
+
     setEvents((prev) =>
       prev.map((e) => (e.id === id ? { ...e, status: newStatus } : e))
     );
@@ -103,7 +136,7 @@ export default function DashboardPage() {
       });
     } catch (err) {
       console.error('Error toggling status', err);
-      fetchData();
+      checkAuthAndFetch();
     }
   };
 
@@ -119,8 +152,9 @@ export default function DashboardPage() {
         body: JSON.stringify({
           name: projectName,
           slackWebhookUrl: slackUrl,
-          discordWebhookUrl: discordUrl
-        })
+          discordWebhookUrl: discordUrl,
+          userId: currentUser?.id,
+        }),
       });
 
       const json = await res.json();
@@ -129,7 +163,7 @@ export default function DashboardPage() {
         setProjectName('');
         setSlackUrl('');
         setDiscordUrl('');
-        fetchData();
+        checkAuthAndFetch();
       } else {
         alert(json.error || 'Something went wrong.');
       }
@@ -144,16 +178,18 @@ export default function DashboardPage() {
     return Array.from(new Set(events.map((e) => e.service).filter(Boolean)));
   }, [events]);
 
-  // Analytics beregninger pr. projekt / kunde
   const projectStats = useMemo(() => {
     return projects.map((proj) => {
-      const projEvents = events.filter((e) => e.project_id === proj.id || e.projects?.api_key === proj.api_key);
+      const projEvents = events.filter(
+        (e) => e.project_id === proj.id || e.projects?.api_key === proj.api_key
+      );
       const total = projEvents.length;
-      const critical = projEvents.filter((e) => e.severity === 'CRITICAL' || e.severity === 'HIGH').length;
+      const critical = projEvents.filter(
+        (e) => e.severity === 'CRITICAL' || e.severity === 'HIGH'
+      ).length;
       const resolved = projEvents.filter((e) => e.status === 'resolved').length;
       const open = total - resolved;
       const lastEvent = projEvents[0]?.created_at || null;
-      // Værdimetrik: Estimat på 0.5 timer (30 min) sparet manuel analyse pr. event
       const hoursSaved = (total * 0.5).toFixed(1);
 
       return {
@@ -163,7 +199,7 @@ export default function DashboardPage() {
         resolved,
         open,
         lastEvent,
-        hoursSaved
+        hoursSaved,
       };
     });
   }, [projects, events]);
@@ -183,7 +219,10 @@ export default function DashboardPage() {
         return false;
       }
 
-      if (selectedService !== 'ALL' && evt.service?.toLowerCase() !== selectedService.toLowerCase()) {
+      if (
+        selectedService !== 'ALL' &&
+        evt.service?.toLowerCase() !== selectedService.toLowerCase()
+      ) {
         return false;
       }
 
@@ -196,42 +235,62 @@ export default function DashboardPage() {
         const matchesService = evt.service?.toLowerCase().includes(query);
         const matchesProject = evt.projects?.name?.toLowerCase().includes(query);
 
-        return matchesUser || matchesSummary || matchesRootCause || matchesFix || matchesService || matchesProject;
+        return (
+          matchesUser ||
+          matchesSummary ||
+          matchesRootCause ||
+          matchesFix ||
+          matchesService ||
+          matchesProject
+        );
       }
 
       return true;
     });
-  }, [events, showResolved, selectedSeverity, selectedProject, selectedService, searchQuery]);
+  }, [
+    events,
+    showResolved,
+    selectedSeverity,
+    selectedProject,
+    selectedService,
+    searchQuery,
+  ]);
 
   const totalAllEvents = events.length;
-  const totalCriticalEvents = events.filter((e) => e.severity === 'CRITICAL' || e.severity === 'HIGH').length;
+  const totalCriticalEvents = events.filter(
+    (e) => e.severity === 'CRITICAL' || e.severity === 'HIGH'
+  ).length;
   const totalHoursSaved = (totalAllEvents * 0.5).toFixed(0);
+
+  if (loading && !currentUser) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-sm">
+        Verifying session & redirecting...
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans p-6 md:p-10">
       <div className="max-w-7xl mx-auto space-y-8">
-        
         {/* Top Header */}
         <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-800 pb-6">
           <div>
             <div className="flex items-center gap-3">
               <span className="h-3 w-3 rounded-full bg-emerald-500 animate-pulse"></span>
               <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-                HookLens <span className="text-xs font-mono px-2 py-0.5 bg-blue-500/10 text-blue-400 rounded-full border border-blue-500/20">Operations & Value Hub</span>
+                HookLens{' '}
+                <span className="text-xs font-mono px-2 py-0.5 bg-blue-500/10 text-blue-400 rounded-full border border-blue-500/20">
+                  Operations & Value Hub
+                </span>
               </h1>
             </div>
             <p className="text-sm text-slate-400 mt-1">
-              AI-driven triage, customer impact monitoring & real-time webhook intelligence.
+              Logged in as <span className="text-slate-200 font-mono">{currentUser?.email}</span>
             </p>
           </div>
 
           <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="text-xs font-semibold px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition"
-            >
-              ← Back to Home
-            </Link>
             <button
               onClick={() => {
                 setCreatedProject(null);
@@ -241,33 +300,47 @@ export default function DashboardPage() {
             >
               <span>+</span> Create New Project
             </button>
+            <button
+              onClick={handleLogout}
+              className="text-xs font-semibold px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-rose-400 hover:border-rose-500/30 transition"
+            >
+              Sign out
+            </button>
           </div>
         </header>
 
         {/* Value & Impact Overview */}
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-            <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Total Incidents Triaged</p>
+            <p className="text-xs font-medium uppercase tracking-wider text-slate-400">
+              Total Incidents Triaged
+            </p>
             <p className="text-3xl font-extrabold text-white mt-2">{totalAllEvents}</p>
-            <p className="text-[11px] text-slate-500 mt-1">Across all connected customers</p>
+            <p className="text-[11px] text-slate-500 mt-1">For your active projects</p>
           </div>
 
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-            <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Critical Alerts Caught</p>
+            <p className="text-xs font-medium uppercase tracking-wider text-slate-400">
+              Critical Alerts Caught
+            </p>
             <p className="text-3xl font-extrabold text-rose-500 mt-2">{totalCriticalEvents}</p>
             <p className="text-[11px] text-slate-500 mt-1">High priority revenue blockers</p>
           </div>
 
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-            <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Estimated Time Saved</p>
+            <p className="text-xs font-medium uppercase tracking-wider text-slate-400">
+              Estimated Time Saved
+            </p>
             <p className="text-3xl font-extrabold text-emerald-400 mt-2">{totalHoursSaved} hrs</p>
             <p className="text-[11px] text-slate-500 mt-1">~30 mins saved per incident</p>
           </div>
 
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-            <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Active Customers / Projects</p>
+            <p className="text-xs font-medium uppercase tracking-wider text-slate-400">
+              Active Endpoints
+            </p>
             <p className="text-3xl font-extrabold text-blue-400 mt-2">{projects.length}</p>
-            <p className="text-[11px] text-slate-500 mt-1">Live monitoring endpoints</p>
+            <p className="text-[11px] text-slate-500 mt-1">Configured webhook channels</p>
           </div>
         </div>
 
@@ -291,56 +364,73 @@ export default function DashboardPage() {
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            📊 Per-Customer Value & Analytics ({projects.length})
+            📊 Delivered Value Breakdown ({projects.length})
           </button>
         </div>
 
         {/* TAB 1: Live Stream */}
         {activeTab === 'stream' && (
           <section className="space-y-6">
-            {/* Active Projects Endpoints */}
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Your Webhook Ingest Endpoints</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {projects.map((proj) => {
-                  const isCopied = copiedKey === proj.api_key;
-                  return (
-                    <div key={proj.id} className="bg-slate-950/70 border border-slate-800 rounded-lg p-3.5 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-white text-xs">{proj.name}</span>
-                          <div className="flex items-center gap-1 text-[10px]">
-                            {proj.slack_webhook_url && <span className="bg-purple-500/10 text-purple-400 px-1.5 py-0.2 rounded border border-purple-500/20">Slack</span>}
-                            {proj.discord_webhook_url && <span className="bg-indigo-500/10 text-indigo-400 px-1.5 py-0.2 rounded border border-indigo-500/20">Discord</span>}
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">
+                Your Webhook Ingest Endpoints
+              </h2>
+              {projects.length === 0 ? (
+                <p className="text-xs text-slate-500">
+                  No projects created yet. Click "+ Create New Project" above.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {projects.map((proj) => {
+                    const isCopied = copiedKey === proj.api_key;
+                    return (
+                      <div
+                        key={proj.id}
+                        className="bg-slate-950/70 border border-slate-800 rounded-lg p-3.5 space-y-2"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-white text-xs">{proj.name}</span>
+                            <div className="flex items-center gap-1 text-[10px]">
+                              {proj.slack_webhook_url && (
+                                <span className="bg-purple-500/10 text-purple-400 px-1.5 py-0.2 rounded border border-purple-500/20">
+                                  Slack
+                                </span>
+                              )}
+                              {proj.discord_webhook_url && (
+                                <span className="bg-indigo-500/10 text-indigo-400 px-1.5 py-0.2 rounded border border-indigo-500/20">
+                                  Discord
+                                </span>
+                              )}
+                            </div>
                           </div>
+                          <span className="text-[10px] font-mono bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20">
+                            {proj.api_key}
+                          </span>
                         </div>
-                        <span className="text-[10px] font-mono bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20">
-                          {proj.api_key}
-                        </span>
-                      </div>
-                      
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 text-[11px] font-mono text-slate-400 bg-slate-900/90 p-2 rounded border border-slate-800/80 truncate">
-                          https://usehooklens.com/api/ingest/{proj.api_key}
+
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 text-[11px] font-mono text-slate-400 bg-slate-900/90 p-2 rounded border border-slate-800/80 truncate">
+                            https://usehooklens.com/api/ingest/{proj.api_key}
+                          </div>
+                          <button
+                            onClick={() => copyToClipboard(proj.api_key)}
+                            className={`text-xs font-medium px-3 py-2 rounded transition flex items-center gap-1.5 shrink-0 ${
+                              isCopied
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                            }`}
+                          >
+                            {isCopied ? '✓ Copied!' : '📋 Copy URL'}
+                          </button>
                         </div>
-                        <button
-                          onClick={() => copyToClipboard(proj.api_key)}
-                          className={`text-xs font-medium px-3 py-2 rounded transition flex items-center gap-1.5 shrink-0 ${
-                            isCopied
-                              ? 'bg-emerald-600 text-white'
-                              : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
-                          }`}
-                        >
-                          {isCopied ? '✓ Copied!' : '📋 Copy URL'}
-                        </button>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
-            {/* Incident Filter & Feed */}
             <div className="space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
@@ -362,7 +452,7 @@ export default function DashboardPage() {
                   </label>
 
                   <button
-                    onClick={fetchData}
+                    onClick={checkAuthAndFetch}
                     className="text-xs text-blue-400 hover:text-blue-300 font-medium"
                   >
                     ↻ Refresh
@@ -433,7 +523,9 @@ export default function DashboardPage() {
               ) : filteredEvents.length === 0 ? (
                 <div className="text-center py-16 bg-slate-900/50 border border-slate-800 rounded-xl border-dashed">
                   <p className="text-slate-400 font-medium">All caught up! No incidents found.</p>
-                  <p className="text-xs text-slate-500 mt-1">Check "Show Resolved" to inspect historical items.</p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Check "Show Resolved" to inspect historical items.
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -445,7 +537,9 @@ export default function DashboardPage() {
                       <div
                         key={evt.id}
                         className={`bg-slate-900 border rounded-xl p-5 transition space-y-4 shadow-sm ${
-                          isResolved ? 'border-slate-800/40 opacity-60 bg-slate-950/40' : 'border-slate-800 hover:border-slate-700'
+                          isResolved
+                            ? 'border-slate-800/40 opacity-60 bg-slate-950/40'
+                            : 'border-slate-800 hover:border-slate-700'
                         }`}
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
@@ -480,7 +574,7 @@ export default function DashboardPage() {
                                 month: 'short',
                                 day: 'numeric',
                                 hour: '2-digit',
-                                minute: '2-digit'
+                                minute: '2-digit',
                               })}
                             </time>
 
@@ -499,18 +593,30 @@ export default function DashboardPage() {
 
                         <div className="space-y-2">
                           <div>
-                            <span className="text-xs font-semibold uppercase text-slate-400">Summary</span>
-                            <p className="text-sm font-medium text-slate-200 mt-0.5">{evt.summary}</p>
+                            <span className="text-xs font-semibold uppercase text-slate-400">
+                              Summary
+                            </span>
+                            <p className="text-sm font-medium text-slate-200 mt-0.5">
+                              {evt.summary}
+                            </p>
                           </div>
 
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
                             <div className="bg-slate-950/70 p-3 rounded-lg border border-slate-800/60">
-                              <span className="text-xs font-semibold text-rose-400 uppercase">Root Cause</span>
-                              <p className="text-xs text-slate-300 mt-1 leading-relaxed">{evt.root_cause}</p>
+                              <span className="text-xs font-semibold text-rose-400 uppercase">
+                                Root Cause
+                              </span>
+                              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                                {evt.root_cause}
+                              </p>
                             </div>
                             <div className="bg-slate-950/70 p-3 rounded-lg border border-slate-800/60">
-                              <span className="text-xs font-semibold text-emerald-400 uppercase">Suggested Fix</span>
-                              <p className="text-xs text-slate-300 mt-1 leading-relaxed">{evt.suggested_fix}</p>
+                              <span className="text-xs font-semibold text-emerald-400 uppercase">
+                                Suggested Fix
+                              </span>
+                              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                                {evt.suggested_fix}
+                              </p>
                             </div>
                           </div>
                         </div>
@@ -530,14 +636,14 @@ export default function DashboardPage() {
           </section>
         )}
 
-        {/* TAB 2: Per-Customer Value & Analytics */}
+        {/* TAB 2: Value Breakdown */}
         {activeTab === 'analytics' && (
           <section className="space-y-6">
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
               <div>
-                <h2 className="text-lg font-semibold text-white">Customer Value Breakdown</h2>
+                <h2 className="text-lg font-semibold text-white">Delivered Value Breakdown</h2>
                 <p className="text-xs text-slate-400 mt-1">
-                  Inspect the direct monitoring value, time savings, and incident volume delivered per customer.
+                  Summary of incidents caught and developer hours saved for your monitored endpoints.
                 </p>
               </div>
 
@@ -545,7 +651,7 @@ export default function DashboardPage() {
                 <table className="w-full text-left text-xs text-slate-300">
                   <thead className="bg-slate-950/80 text-slate-400 font-semibold border-b border-slate-800 uppercase tracking-wider">
                     <tr>
-                      <th className="py-3 px-4">Customer / Project</th>
+                      <th className="py-3 px-4">Project</th>
                       <th className="py-3 px-4">Channels</th>
                       <th className="py-3 px-4 text-center">Total Incidents</th>
                       <th className="py-3 px-4 text-center">Critical Alerts</th>
@@ -559,7 +665,9 @@ export default function DashboardPage() {
                       <tr key={stat.project.id} className="hover:bg-slate-800/30 transition">
                         <td className="py-3 px-4 font-sans font-semibold text-white">
                           {stat.project.name}
-                          <div className="text-[10px] text-slate-500 font-mono">{stat.project.api_key}</div>
+                          <div className="text-[10px] text-slate-500 font-mono">
+                            {stat.project.api_key}
+                          </div>
                         </td>
                         <td className="py-3 px-4 font-sans">
                           <div className="flex items-center gap-1">
@@ -573,9 +681,10 @@ export default function DashboardPage() {
                                 Discord
                               </span>
                             )}
-                            {!stat.project.slack_webhook_url && !stat.project.discord_webhook_url && (
-                              <span className="text-slate-600 text-[10px]">None</span>
-                            )}
+                            {!stat.project.slack_webhook_url &&
+                              !stat.project.discord_webhook_url && (
+                                <span className="text-slate-600 text-[10px]">None</span>
+                              )}
                           </div>
                         </td>
                         <td className="py-3 px-4 text-center font-bold text-slate-100">
@@ -598,7 +707,7 @@ export default function DashboardPage() {
                                 month: 'short',
                                 day: 'numeric',
                                 hour: '2-digit',
-                                minute: '2-digit'
+                                minute: '2-digit',
                               })
                             : 'No events yet'}
                         </td>
@@ -610,14 +719,12 @@ export default function DashboardPage() {
             </div>
           </section>
         )}
-
       </div>
 
       {/* Modal: Create Project */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-6 shadow-2xl">
-            
             <div className="flex items-center justify-between border-b border-slate-800 pb-4">
               <h3 className="text-lg font-bold text-white">Create New Project</h3>
               <button
@@ -667,7 +774,9 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-300">Slack Webhook URL (Optional)</label>
+                  <label className="text-xs font-semibold text-slate-300">
+                    Slack Webhook URL (Optional)
+                  </label>
                   <input
                     type="url"
                     placeholder="https://hooks.slack.com/services/..."
@@ -678,7 +787,9 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-300">Discord Webhook URL (Optional)</label>
+                  <label className="text-xs font-semibold text-slate-300">
+                    Discord Webhook URL (Optional)
+                  </label>
                   <input
                     type="url"
                     placeholder="https://discord.com/api/webhooks/..."
@@ -706,11 +817,9 @@ export default function DashboardPage() {
                 </div>
               </form>
             )}
-
           </div>
         </div>
       )}
-
     </div>
   );
 }
