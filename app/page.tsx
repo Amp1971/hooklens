@@ -1,6 +1,32 @@
+'use client';
+
+import { useState } from 'react';
 import Link from 'next/link';
 
 export default function LandingPage() {
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+
+  const handleCheckout = async (plan: 'starter' | 'growth' | 'scale') => {
+    setLoadingPlan(plan);
+    try {
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert(data.error || 'Failed to initiate checkout. Please try again.');
+      }
+    } catch (err) {
+      alert('Network error. Please try again.');
+    } finally {
+      setLoadingPlan(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-blue-500 selection:text-white">
       {/* Navigation */}
@@ -20,10 +46,10 @@ export default function LandingPage() {
             Log in
           </Link>
           <Link
-            href="/dashboard"
+            href="/login"
             className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-4 py-2.5 rounded-lg transition shadow-lg shadow-blue-500/20"
           >
-            Go to Dashboard
+            Dashboard
           </Link>
         </div>
       </nav>
@@ -47,17 +73,17 @@ export default function LandingPage() {
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-          <Link
-            href="/dashboard"
+          <a
+            href="#pricing"
             className="w-full sm:w-auto px-8 py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl transition shadow-xl shadow-blue-600/25 flex items-center justify-center gap-2 text-sm"
           >
-            Get Started for Free &rarr;
-          </Link>
+            Start Monitoring Now &rarr;
+          </a>
           <Link
-            href="#pricing"
+            href="/login"
             className="w-full sm:w-auto px-8 py-3.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 font-semibold rounded-xl transition text-sm"
           >
-            View Pricing
+            Log in to Existing Account
           </Link>
         </div>
       </section>
@@ -88,12 +114,13 @@ export default function LandingPage() {
                 <li className="flex items-center gap-2">✓ 7 days log retention</li>
               </ul>
             </div>
-            <Link
-              href="/dashboard"
-              className="w-full py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold text-center transition block"
+            <button
+              onClick={() => handleCheckout('starter')}
+              disabled={loadingPlan === 'starter'}
+              className="w-full py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold text-center transition block disabled:opacity-50"
             >
-              Choose Starter
-            </Link>
+              {loadingPlan === 'starter' ? 'Redirecting to Stripe...' : 'Choose Starter'}
+            </button>
           </div>
 
           {/* Growth Plan */}
@@ -116,12 +143,13 @@ export default function LandingPage() {
                 <li className="flex items-center gap-2">✓ 30 days log retention</li>
               </ul>
             </div>
-            <Link
-              href="/dashboard"
-              className="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold text-center transition block shadow-lg shadow-blue-500/20"
+            <button
+              onClick={() => handleCheckout('growth')}
+              disabled={loadingPlan === 'growth'}
+              className="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold text-center transition block shadow-lg shadow-blue-500/20 disabled:opacity-50"
             >
-              Choose Growth
-            </Link>
+              {loadingPlan === 'growth' ? 'Redirecting to Stripe...' : 'Choose Growth'}
+            </button>
           </div>
 
           {/* Scale Plan */}
@@ -141,12 +169,13 @@ export default function LandingPage() {
                 <li className="flex items-center gap-2">✓ Priority SLA support</li>
               </ul>
             </div>
-            <Link
-              href="/dashboard"
-              className="w-full py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold text-center transition block"
+            <button
+              onClick={() => handleCheckout('scale')}
+              disabled={loadingPlan === 'scale'}
+              className="w-full py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold text-center transition block disabled:opacity-50"
             >
-              Choose Scale
-            </Link>
+              {loadingPlan === 'scale' ? 'Redirecting to Stripe...' : 'Choose Scale'}
+            </button>
           </div>
         </div>
       </section>
