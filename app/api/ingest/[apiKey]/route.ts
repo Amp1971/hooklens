@@ -6,10 +6,11 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export async function POST(
   request: Request,
-  { params }: { params: Promise<{ apiKey: string }> }
+  { params }: { params: Promise<{ apiKey: string }> | { apiKey: string } }
 ) {
   try {
-    const { apiKey } = await params;
+    const resolvedParams = await params;
+    const apiKey = resolvedParams.apiKey;
 
     // 1. Verificer projektet ud fra API-nøglen
     const { data: project, error: projectError } = await supabase
@@ -20,30 +21,30 @@ export async function POST(
 
     if (projectError || !project) {
       return NextResponse.json(
-        { success: false, error: 'Ugyldig eller manglende HookLens API-nøgle.' },
+        { success: false, error: 'Invalid or missing HookLens API key.' },
         { status: 401 }
       );
     }
 
     const payload = await request.json();
 
-    // 2. Kør AI Triage med Gemini 3.5 Flash
+    // 2. Kør AI Triage med Gemini
     const prompt = `
-Du er en specialist i overvågning af webhook-fejl (HookLens AI).
-Analyser følgende webhook payload, find ud af hvilken platform fejlen kommer fra (f.eks. Stripe, Shopify, GitHub, Supabase),
-hvor alvorlig den er, hvilken bruger/kunde den vedrører (hvis muligt), kerneårsagen til fejlen og et konkret løsningsforslag.
+You are an expert webhook failure monitoring assistant (HookLens AI).
+Analyze the following webhook payload, detect the platform/source (e.g. Stripe, Shopify, GitHub, Supabase),
+severity level, affected customer/user, root cause, and an actionable suggested fix.
 
-Returner svaret udelukkende som valid JSON med følgende format:
+Return ONLY valid JSON matching this schema:
 {
-  "service": "Platform/kilde navn (f.eks. Stripe, Shopify, GitHub)",
-  "severity": "CRITICAL", "HIGH", "MEDIUM" eller "LOW",
-  "affected_user": "Kunde e-mail, id eller 'N/A'",
-  "summary": "Kort resumé af hændelsen (1 sætning på engelsk)",
-  "root_cause": "Hvad gik helt præcist galt teknisk (på engelsk)",
-  "suggested_fix": "Hvad skal udvikleren eller support gøre nu for at løse problemet (på engelsk)"
+  "service": "Service name",
+  "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
+  "affected_user": "User email or ID or 'N/A'",
+  "summary": "One sentence summary in English",
+  "root_cause": "Exact technical root cause in English",
+  "suggested_fix": "Actionable developer fix in English"
 }
 
-Payload til analyse:
+Payload:
 ${JSON.stringify(payload, null, 2)}
 `;
 
@@ -55,9 +56,9 @@ ${JSON.stringify(payload, null, 2)}
       },
     });
 
-    const triageText = aiResponse.text();
+    const triageText = aiResponse.text;
     if (!triageText) {
-      throw new Error('Gemini returnerede et tomt svar');
+      throw new Error('Gemini returned an empty response');
     }
 
     const triage = JSON.parse(triageText);
@@ -130,7 +131,7 @@ ${JSON.stringify(payload, null, 2)}
       }).catch(err => console.error('Slack Send Error:', err));
     }
 
-    // 5. Send Discord Notifikation (Rich Embed)
+    // 5. Send Discord Notifikation
     const discordUrl = project.discord_webhook_url;
     if (discordUrl) {
       const discordColor = triage.severity === 'CRITICAL' ? 14688858 : triage.severity === 'HIGH' ? 15512110 : 3061373;
@@ -169,7 +170,7 @@ ${JSON.stringify(payload, null, 2)}
   } catch (error: any) {
     console.error('Ingest Error:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Internt systemfejl' },
+      { success: false, error: error.message || 'Internal error' },
       { status: 500 }
     );
   }
