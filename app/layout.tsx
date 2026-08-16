@@ -9,6 +9,9 @@ export const metadata: Metadata = {
   description: "Intercept failed webhooks across Stripe, Shopify, GitHub and APIs. Diagnose root causes with AI and alert in Slack & Discord in real time.",
   metadataBase: new URL("https://usehooklens.com"),
   keywords: ["webhook monitoring", "webhook triage", "stripe webhooks", "ai webhook debugging", "slack alerts", "developer tools"],
+  verification: {
+    google: "y1UeKiUFo5AvyQZw77PI_Rm29gVIkpryaknQ1HBINrU",
+  },
   openGraph: {
     title: "HookLens — AI-Powered Webhook Triage & Monitoring",
     description: "Intercept failed webhooks and diagnose root causes instantly with AI.",
