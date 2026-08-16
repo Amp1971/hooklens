@@ -1,7 +1,8 @@
-import { supabase } from '@/app/lib/supabase';
+'use client';
 
-// Tving Next.js til altid at hente nyeste data ved genindlæsning
-export const dynamic = 'force-dynamic';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { supabase } from '@/app/lib/supabase';
 
 interface WebhookEvent {
   id: string;
@@ -13,17 +14,89 @@ interface WebhookEvent {
   root_cause: string;
   suggested_fix: string;
   raw_payload: any;
+  projects?: {
+    name: string;
+    api_key: string;
+  };
 }
 
-export default async function DashboardPage() {
-  // Hent alle fejl-hændelser fra Supabase sorteret efter nyeste først
-  const { data: events, error } = await supabase
-    .from('webhook_events')
-    .select('*')
-    .order('created_at', { ascending: false });
+interface Project {
+  id: string;
+  name: string;
+  api_key: string;
+  slack_webhook_url: string | null;
+  created_at: string;
+}
 
-  const totalEvents = events?.length || 0;
-  const criticalEvents = events?.filter(e => e.severity === 'CRITICAL' || e.severity === 'HIGH').length || 0;
+export default function DashboardPage() {
+  const [events, setEvents] = useState<WebhookEvent[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [projectName, setProjectName] = useState('');
+  const [slackUrl, setSlackUrl] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+  const [createdProject, setCreatedProject] = useState<Project | null>(null);
+
+  const fetchData = async () => {
+    setLoading(true);
+
+    // Hent projekter
+    const { data: projectData } = await supabase
+      .from('projects')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    // Hent events med projekt-info
+    const { data: eventData } = await supabase
+      .from('webhook_events')
+      .select('*, projects(name, api_key)')
+      .order('created_at', { ascending: false });
+
+    if (projectData) setProjects(projectData);
+    if (eventData) setEvents(eventData as any);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const handleCreateProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!projectName.trim()) return;
+
+    setIsCreating(true);
+    try {
+      const res = await fetch('/api/projects/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: projectName,
+          slackWebhookUrl: slackUrl
+        })
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        setCreatedProject(json.project);
+        setProjectName('');
+        setSlackUrl('');
+        fetchData();
+      } else {
+        alert(json.error || 'Der skete en fejl.');
+      }
+    } catch (err) {
+      alert('Der opstod en fejl under oprettelse af projektet.');
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const totalEvents = events.length;
+  const criticalEvents = events.filter(e => e.severity === 'CRITICAL' || e.severity === 'HIGH').length;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans p-6 md:p-10">
@@ -44,9 +117,21 @@ export default async function DashboardPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="text-xs font-mono bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-slate-300">
-              Endpoint: <span className="text-emerald-400">/api/triage</span>
-            </div>
+            <Link
+              href="/"
+              className="text-xs font-semibold px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition"
+            >
+              ← Back to Home
+            </Link>
+            <button
+              onClick={() => {
+                setCreatedProject(null);
+                setIsModalOpen(true);
+              }}
+              className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-4 py-2 rounded-lg transition shadow-lg shadow-blue-500/20 flex items-center gap-2"
+            >
+              <span>+</span> Create New Project
+            </button>
           </div>
         </header>
 
@@ -61,32 +146,53 @@ export default async function DashboardPage() {
             <p className="text-3xl font-extrabold text-rose-500 mt-2">{criticalEvents}</p>
           </div>
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-            <p className="text-xs font-medium uppercase tracking-wider text-slate-400">AI Engine</p>
-            <p className="text-xl font-bold text-blue-400 mt-2">Gemini 3.5 Flash</p>
+            <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Active Projects</p>
+            <p className="text-3xl font-extrabold text-blue-400 mt-2">{projects.length}</p>
           </div>
         </div>
+
+        {/* Active Projects Quick-List */}
+        <section className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Your Webhook Ingest Endpoints</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {projects.map((proj) => (
+              <div key={proj.id} className="bg-slate-950/70 border border-slate-800 rounded-lg p-3.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-white text-xs">{proj.name}</span>
+                  <span className="text-[10px] font-mono bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20">
+                    {proj.api_key}
+                  </span>
+                </div>
+                <div className="text-[11px] font-mono text-slate-400 bg-slate-900/90 p-2 rounded border border-slate-800/80 break-all select-all">
+                  https://usehooklens.com/api/ingest/{proj.api_key}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
 
         {/* Incidents Feed */}
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-white">Incident Stream</h2>
-            <span className="text-xs text-slate-400">Auto-synced with Supabase</span>
+            <button
+              onClick={fetchData}
+              className="text-xs text-blue-400 hover:text-blue-300 font-medium"
+            >
+              ↻ Refresh
+            </button>
           </div>
 
-          {error && (
-            <div className="p-4 bg-rose-500/10 border border-rose-500/30 text-rose-300 rounded-lg text-sm">
-              Fejl ved indlæsning fra database: {error.message}
-            </div>
-          )}
-
-          {(!events || events.length === 0) ? (
+          {loading ? (
+            <div className="text-center py-12 text-slate-500 text-sm">Henter hændelser...</div>
+          ) : events.length === 0 ? (
             <div className="text-center py-16 bg-slate-900/50 border border-slate-800 rounded-xl border-dashed">
               <p className="text-slate-400 font-medium">Ingen registrerede hændelser endnu.</p>
-              <p className="text-xs text-slate-500 mt-1">Send en test-fejl via terminalen for at se den her.</p>
+              <p className="text-xs text-slate-500 mt-1">Send webhooks til et af dine endpoints for at se dem her.</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {events.map((evt: WebhookEvent) => {
+              {events.map((evt) => {
                 const isCritical = evt.severity === 'CRITICAL' || evt.severity === 'HIGH';
                 return (
                   <div
@@ -107,6 +213,11 @@ export default async function DashboardPage() {
                         <span className="font-semibold text-white text-sm">
                           {evt.service}
                         </span>
+                        {evt.projects && (
+                          <span className="text-xs font-mono bg-blue-500/10 text-blue-300 px-2 py-0.5 rounded border border-blue-500/20">
+                            📁 {evt.projects.name}
+                          </span>
+                        )}
                         {evt.affected_user && evt.affected_user !== 'N/A' && (
                           <span className="text-xs font-mono bg-slate-800 px-2 py-0.5 rounded text-slate-300">
                             👤 {evt.affected_user}
@@ -150,6 +261,89 @@ export default async function DashboardPage() {
         </section>
 
       </div>
+
+      {/* Modal: Opret Projekt */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-6 shadow-2xl">
+            
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <h3 className="text-lg font-bold text-white">Create New Project</h3>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="text-slate-400 hover:text-white text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            {createdProject ? (
+              <div className="space-y-4">
+                <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 rounded-xl text-xs space-y-2">
+                  <p className="font-bold text-sm">🎉 Projekt oprettet med succes!</p>
+                  <p>Brug følgende endpoint i dine webhook-indstillinger:</p>
+                  <div className="bg-slate-950 p-2.5 rounded font-mono text-[11px] text-white select-all break-all border border-emerald-500/30">
+                    https://usehooklens.com/api/ingest/{createdProject.api_key}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsModalOpen(false)}
+                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition"
+                >
+                  Luk & gå til Dashboard
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleCreateProject} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-300">Project Name *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Shopify Production Store, Stripe EU, Auth Service"
+                    value={projectName}
+                    onChange={(e) => setProjectName(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-300">Slack Webhook URL (Valgfri)</label>
+                  <input
+                    type="url"
+                    placeholder="https://hooks.slack.com/services/..."
+                    value={slackUrl}
+                    onChange={(e) => setSlackUrl(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                  />
+                  <p className="text-[11px] text-slate-500">
+                    Hvis tom, bruges standard-kanalen fra systemet.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white"
+                  >
+                    Annuller
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isCreating}
+                    className="px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition disabled:opacity-50"
+                  >
+                    {isCreating ? 'Opretter...' : 'Generer Endpoint'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
