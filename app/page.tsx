@@ -18,10 +18,10 @@ export default function LandingPage() {
       if (data.url) {
         window.location.href = data.url;
       } else {
-        alert(data.error || 'Failed to initiate checkout. Please try again.');
+        alert('Checkout error: ' + (data.error || 'Unknown error occurred.'));
       }
-    } catch (err) {
-      alert('Network error. Please try again.');
+    } catch (err: any) {
+      alert('Network/Client error: ' + (err.message || 'Please try again.'));
     } finally {
       setLoadingPlan(null);
     }
