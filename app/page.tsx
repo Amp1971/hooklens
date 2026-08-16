@@ -1,223 +1,544 @@
+'use client';
+
+import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
+import { supabase } from '@/app/lib/supabase';
 
-export default function LandingPage() {
+interface WebhookEvent {
+  id: string;
+  created_at: string;
+  service: string;
+  severity: string;
+  affected_user: string;
+  summary: string;
+  root_cause: string;
+  suggested_fix: string;
+  raw_payload: any;
+  project_id?: string;
+  projects?: {
+    name: string;
+    api_key: string;
+  };
+}
+
+interface Project {
+  id: string;
+  name: string;
+  api_key: string;
+  slack_webhook_url: string | null;
+  discord_webhook_url: string | null;
+  created_at: string;
+}
+
+export default function DashboardPage() {
+  const [events, setEvents] = useState<WebhookEvent[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Copy URL state
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Filter & Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedSeverity, setSelectedSeverity] = useState<string>('ALL');
+  const [selectedProject, setSelectedProject] = useState<string>('ALL');
+  const [selectedService, setSelectedService] = useState<string>('ALL');
+
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [projectName, setProjectName] = useState('');
+  const [slackUrl, setSlackUrl] = useState('');
+  const [discordUrl, setDiscordUrl] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+  const [createdProject, setCreatedProject] = useState<Project | null>(null);
+
+  const fetchData = async () => {
+    setLoading(true);
+
+    const { data: projectData } = await supabase
+      .from('projects')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    const { data: eventData } = await supabase
+      .from('webhook_events')
+      .select('*, projects(name, api_key)')
+      .order('created_at', { ascending: false });
+
+    if (projectData) setProjects(projectData);
+    if (eventData) setEvents(eventData as any);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const copyToClipboard = (apiKey: string) => {
+    const url = `https://usehooklens.com/api/ingest/${apiKey}`;
+    navigator.clipboard.writeText(url);
+    setCopiedKey(apiKey);
+    setTimeout(() => {
+      setCopiedKey(null);
+    }, 2000);
+  };
+
+  const handleCreateProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!projectName.trim()) return;
+
+    setIsCreating(true);
+    try {
+      const res = await fetch('/api/projects/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: projectName,
+          slackWebhookUrl: slackUrl,
+          discordWebhookUrl: discordUrl
+        })
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        setCreatedProject(json.project);
+        setProjectName('');
+        setSlackUrl('');
+        setDiscordUrl('');
+        fetchData();
+      } else {
+        alert(json.error || 'Something went wrong.');
+      }
+    } catch (err) {
+      alert('Error occurred while creating project.');
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  // Dynamiske services til dropdown
+  const uniqueServices = useMemo(() => {
+    const services = Array.from(new Set(events.map((e) => e.service).filter(Boolean)));
+    return services;
+  }, [events]);
+
+  // Filtreringslogik
+  const filteredEvents = useMemo(() => {
+    return events.filter((evt) => {
+      // 1. Severity filter
+      if (selectedSeverity !== 'ALL' && evt.severity !== selectedSeverity) {
+        return false;
+      }
+
+      // 2. Project filter
+      if (selectedProject !== 'ALL' && evt.projects?.api_key !== selectedProject) {
+        return false;
+      }
+
+      // 3. Service filter
+      if (selectedService !== 'ALL' && evt.service?.toLowerCase() !== selectedService.toLowerCase()) {
+        return false;
+      }
+
+      // 4. Fritekst søgning
+      if (searchQuery.trim() !== '') {
+        const query = searchQuery.toLowerCase();
+        const matchesUser = evt.affected_user?.toLowerCase().includes(query);
+        const matchesSummary = evt.summary?.toLowerCase().includes(query);
+        const matchesRootCause = evt.root_cause?.toLowerCase().includes(query);
+        const matchesFix = evt.suggested_fix?.toLowerCase().includes(query);
+        const matchesService = evt.service?.toLowerCase().includes(query);
+        const matchesProject = evt.projects?.name?.toLowerCase().includes(query);
+
+        return matchesUser || matchesSummary || matchesRootCause || matchesFix || matchesService || matchesProject;
+      }
+
+      return true;
+    });
+  }, [events, selectedSeverity, selectedProject, selectedService, searchQuery]);
+
+  const hasActiveFilters = searchQuery !== '' || selectedSeverity !== 'ALL' || selectedProject !== 'ALL' || selectedService !== 'ALL';
+
+  const resetFilters = () => {
+    setSearchQuery('');
+    setSelectedSeverity('ALL');
+    setSelectedProject('ALL');
+    setSelectedService('ALL');
+  };
+
+  const totalEvents = events.length;
+  const criticalEvents = events.filter(e => e.severity === 'CRITICAL' || e.severity === 'HIGH').length;
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-blue-500 selection:text-white">
-      
-      {/* Navigation */}
-      <nav className="border-b border-slate-800/80 bg-slate-950/70 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="h-3 w-3 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="font-bold text-lg tracking-tight text-white">HookLens</span>
-          </div>
-
-          <div className="flex items-center gap-6 text-sm">
-            <a href="#features" className="text-slate-400 hover:text-white transition">Features</a>
-            <a href="#how-it-works" className="text-slate-400 hover:text-white transition">How it works</a>
-            <a href="#pricing" className="text-slate-400 hover:text-white transition">Pricing</a>
-            <Link
-              href="/dashboard"
-              className="bg-blue-600 hover:bg-blue-500 text-white font-medium px-4 py-2 rounded-lg text-xs transition shadow-lg shadow-blue-500/20"
-            >
-              Open Dashboard →
-            </Link>
-          </div>
-        </div>
-      </nav>
-
-      {/* Hero Section */}
-      <section className="relative pt-24 pb-20 px-6 max-w-5xl mx-auto text-center space-y-8">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-blue-500/30 bg-blue-500/10 text-xs font-mono text-blue-400">
-          <span>⚡ Gemini 3.5 Flash Powered</span>
-          <span className="text-slate-500">•</span>
-          <span>Zero Configuration Triage</span>
-        </div>
-
-        <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight text-white leading-[1.15]">
-          Stop debugging blind webhook failures. <br />
-          <span className="bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent">
-            Get instant AI root-cause alerts.
-          </span>
-        </h1>
-
-        <p className="max-w-2xl mx-auto text-base sm:text-lg text-slate-400 leading-relaxed">
-          HookLens intercepts failed webhooks from Stripe, Shopify, GitHub, and more. Gemini analyzes the payload, identifies the affected customer, and delivers actionable fixes straight into Slack.
-        </p>
-
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-          <Link
-            href="/dashboard"
-            className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white font-semibold px-6 py-3 rounded-xl transition shadow-xl shadow-blue-600/25 flex items-center justify-center gap-2 text-sm"
-          >
-            Start 14-Day Free Trial
-            <span>→</span>
-          </Link>
-          <a
-            href="#how-it-works"
-            className="w-full sm:w-auto bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 font-semibold px-6 py-3 rounded-xl transition text-sm"
-          >
-            See how it works
-          </a>
-        </div>
-
-        {/* Live Preview Card */}
-        <div className="mt-12 text-left bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans p-6 md:p-10">
+      <div className="max-w-7xl mx-auto space-y-8">
+        
+        {/* Top Header */}
+        <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-800 pb-6">
+          <div>
             <div className="flex items-center gap-3">
-              <span className="px-2.5 py-0.5 rounded text-xs font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                CRITICAL
-              </span>
-              <span className="font-semibold text-sm text-white">Stripe Webhook Failure</span>
-              <span className="text-xs font-mono bg-slate-800 px-2 py-0.5 rounded text-slate-400">
-                👤 jane.doe@example.com
-              </span>
+              <span className="h-3 w-3 rounded-full bg-emerald-500 animate-pulse"></span>
+              <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+                HookLens <span className="text-xs font-mono px-2 py-0.5 bg-blue-500/10 text-blue-400 rounded-full border border-blue-500/20">Live Triage</span>
+              </h1>
             </div>
-            <span className="text-xs text-slate-500 font-mono">Delivered to #dev-alerts</span>
-          </div>
-
-          <div className="space-y-3 text-xs">
-            <div>
-              <span className="font-bold text-slate-400 uppercase tracking-wider">Summary</span>
-              <p className="text-slate-200 text-sm mt-0.5">Recurring invoice payment failed due to insufficient customer funds on the card.</p>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-              <div className="bg-slate-950/80 p-3 rounded-lg border border-slate-800/80">
-                <span className="font-bold text-rose-400 uppercase">Root Cause</span>
-                <p className="text-slate-300 mt-1">Stripe returned `card_declined` with decline code `insufficient_funds` on 3rd attempt.</p>
-              </div>
-              <div className="bg-slate-950/80 p-3 rounded-lg border border-slate-800/80">
-                <span className="font-bold text-emerald-400 uppercase">Suggested Fix</span>
-                <p className="text-slate-300 mt-1">Trigger customer billing update email or pause active subscription until a new card is provided.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* How it works */}
-      <section id="how-it-works" className="py-20 border-t border-slate-900 bg-slate-950/40">
-        <div className="max-w-5xl mx-auto px-6">
-          <div className="text-center space-y-3 mb-16">
-            <h2 className="text-2xl sm:text-3xl font-bold text-white">Up and running in 3 steps</h2>
-            <p className="text-sm text-slate-400">No complex SDKs or backend architecture rewrites required.</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-6 space-y-3">
-              <div className="h-9 w-9 bg-blue-600/10 border border-blue-500/20 text-blue-400 font-bold rounded-lg flex items-center justify-center text-sm">
-                1
-              </div>
-              <h3 className="text-base font-semibold text-white">Get your endpoint</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Create a project to receive your secure ingest URL with a unique project API key.
-              </p>
-            </div>
-
-            <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-6 space-y-3">
-              <div className="h-9 w-9 bg-blue-600/10 border border-blue-500/20 text-blue-400 font-bold rounded-lg flex items-center justify-center text-sm">
-                2
-              </div>
-              <h3 className="text-base font-semibold text-white">Paste webhook URL</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Add HookLens to Stripe, Shopify, or GitHub dead-letter queues as your failover receiver.
-              </p>
-            </div>
-
-            <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-6 space-y-3">
-              <div className="h-9 w-9 bg-blue-600/10 border border-blue-500/20 text-blue-400 font-bold rounded-lg flex items-center justify-center text-sm">
-                3
-              </div>
-              <h3 className="text-base font-semibold text-white">Receive Actionable Fixes</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Gemini triages failures instantly and posts clear root causes and solutions right into Slack.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing Section */}
-      <section id="pricing" className="py-20 border-t border-slate-900">
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="text-center space-y-3 mb-16">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-xs font-mono text-emerald-400">
-              14-Day Free Trial • Up to 500 Events Included
-            </div>
-            <h2 className="text-2xl sm:text-4xl font-bold text-white">Simple, predictable pricing</h2>
-            <p className="text-sm text-slate-400 max-w-xl mx-auto">
-              Start with a 14-day free trial on any plan. No credit card required upfront.
+            <p className="text-sm text-slate-400 mt-1">
+              AI-driven webhook monitoring & automated multi-channel root-cause analysis.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/"
+              className="text-xs font-semibold px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition"
+            >
+              ← Back to Home
+            </Link>
+            <button
+              onClick={() => {
+                setCreatedProject(null);
+                setIsModalOpen(true);
+              }}
+              className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-4 py-2 rounded-lg transition shadow-lg shadow-blue-500/20 flex items-center gap-2"
+            >
+              <span>+</span> Create New Project
+            </button>
+          </div>
+        </header>
+
+        {/* Stats Widgets */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+            <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Total Analyzed Events</p>
+            <p className="text-3xl font-extrabold text-white mt-2">{totalEvents}</p>
+          </div>
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+            <p className="text-xs font-medium uppercase tracking-wider text-slate-400">High / Critical Alerts</p>
+            <p className="text-3xl font-extrabold text-rose-500 mt-2">{criticalEvents}</p>
+          </div>
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+            <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Active Projects</p>
+            <p className="text-3xl font-extrabold text-blue-400 mt-2">{projects.length}</p>
+          </div>
+        </div>
+
+        {/* Active Projects Quick-List */}
+        <section className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Your Webhook Ingest Endpoints</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {projects.map((proj) => {
+              const isCopied = copiedKey === proj.api_key;
+              return (
+                <div key={proj.id} className="bg-slate-950/70 border border-slate-800 rounded-lg p-3.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-white text-xs">{proj.name}</span>
+                      <div className="flex items-center gap-1 text-[10px]">
+                        {proj.slack_webhook_url && <span className="bg-purple-500/10 text-purple-400 px-1.5 py-0.2 rounded border border-purple-500/20">Slack</span>}
+                        {proj.discord_webhook_url && <span className="bg-indigo-500/10 text-indigo-400 px-1.5 py-0.2 rounded border border-indigo-500/20">Discord</span>}
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-mono bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20">
+                      {proj.api_key}
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 text-[11px] font-mono text-slate-400 bg-slate-900/90 p-2 rounded border border-slate-800/80 truncate">
+                      https://usehooklens.com/api/ingest/{proj.api_key}
+                    </div>
+                    <button
+                      onClick={() => copyToClipboard(proj.api_key)}
+                      className={`text-xs font-medium px-3 py-2 rounded transition flex items-center gap-1.5 shrink-0 ${
+                        isCopied
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                      }`}
+                    >
+                      {isCopied ? '✓ Copied!' : '📋 Copy URL'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Incidents Feed with Search & Filters */}
+        <section className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-white">Incident Stream</h2>
+              <p className="text-xs text-slate-400">
+                Showing {filteredEvents.length} of {events.length} incidents
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              {hasActiveFilters && (
+                <button
+                  onClick={resetFilters}
+                  className="text-xs text-rose-400 hover:text-rose-300 font-medium"
+                >
+                  ✕ Clear Filters
+                </button>
+              )}
+              <button
+                onClick={fetchData}
+                className="text-xs text-blue-400 hover:text-blue-300 font-medium"
+              >
+                ↻ Refresh
+              </button>
+            </div>
+          </div>
+
+          {/* Search & Filter Bar */}
+          <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Free-text Search */}
+            <div>
+              <input
+                type="text"
+                placeholder="🔍 Search user, error, root cause..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            {/* Severity Filter */}
+            <div>
+              <select
+                value={selectedSeverity}
+                onChange={(e) => setSelectedSeverity(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+              >
+                <option value="ALL">All Severities</option>
+                <option value="CRITICAL">🔴 Critical</option>
+                <option value="HIGH">🟠 High</option>
+                <option value="MEDIUM">🟡 Medium</option>
+                <option value="LOW">🟢 Low</option>
+              </select>
+            </div>
+
+            {/* Project Filter */}
+            <div>
+              <select
+                value={selectedProject}
+                onChange={(e) => setSelectedProject(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+              >
+                <option value="ALL">All Projects</option>
+                {projects.map((proj) => (
+                  <option key={proj.id} value={proj.api_key}>
+                    📁 {proj.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Service Filter */}
+            <div>
+              <select
+                value={selectedService}
+                onChange={(e) => setSelectedService(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+              >
+                <option value="ALL">All Services</option>
+                {uniqueServices.map((srv) => (
+                  <option key={srv} value={srv}>
+                    ⚡ {srv}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Stream List */}
+          {loading ? (
+            <div className="text-center py-12 text-slate-500 text-sm">Fetching incidents...</div>
+          ) : filteredEvents.length === 0 ? (
+            <div className="text-center py-16 bg-slate-900/50 border border-slate-800 rounded-xl border-dashed">
+              <p className="text-slate-400 font-medium">No incidents matched your criteria.</p>
+              <p className="text-xs text-slate-500 mt-1">Try clearing your filters or search query.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {filteredEvents.map((evt) => {
+                const isCritical = evt.severity === 'CRITICAL' || evt.severity === 'HIGH';
+                return (
+                  <div
+                    key={evt.id}
+                    className="bg-slate-900 border border-slate-800 rounded-xl p-5 hover:border-slate-700 transition space-y-4 shadow-sm"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={`text-xs font-semibold px-2.5 py-1 rounded-md border ${
+                            isCritical
+                              ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                              : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                          }`}
+                        >
+                          {evt.severity}
+                        </span>
+                        <span className="font-semibold text-white text-sm">
+                          {evt.service}
+                        </span>
+                        {evt.projects && (
+                          <span className="text-xs font-mono bg-blue-500/10 text-blue-300 px-2 py-0.5 rounded border border-blue-500/20">
+                            📁 {evt.projects.name}
+                          </span>
+                        )}
+                        {evt.affected_user && evt.affected_user !== 'N/A' && (
+                          <span className="text-xs font-mono bg-slate-800 px-2 py-0.5 rounded text-slate-300">
+                            👤 {evt.affected_user}
+                          </span>
+                        )}
+                      </div>
+                      <time className="text-xs text-slate-400">
+                        {new Date(evt.created_at).toLocaleString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit'
+                        })}
+                      </time>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div>
+                        <span className="text-xs font-semibold uppercase text-slate-400">Summary</span>
+                        <p className="text-sm font-medium text-slate-200 mt-0.5">{evt.summary}</p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                        <div className="bg-slate-950/70 p-3 rounded-lg border border-slate-800/60">
+                          <span className="text-xs font-semibold text-rose-400 uppercase">Root Cause</span>
+                          <p className="text-xs text-slate-300 mt-1 leading-relaxed">{evt.root_cause}</p>
+                        </div>
+                        <div className="bg-slate-950/70 p-3 rounded-lg border border-slate-800/60">
+                          <span className="text-xs font-semibold text-emerald-400 uppercase">Suggested Fix</span>
+                          <p className="text-xs text-slate-300 mt-1 leading-relaxed">{evt.suggested_fix}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <details className="text-xs text-slate-400 pt-1 cursor-pointer">
+                      <summary className="hover:text-slate-200">View raw payload</summary>
+                      <pre className="mt-2 p-3 bg-slate-950 rounded-lg overflow-x-auto text-[11px] font-mono text-slate-300 border border-slate-800">
+                        {JSON.stringify(evt.raw_payload, null, 2)}
+                      </pre>
+                    </details>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+      </div>
+
+      {/* Modal: Create Project */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-6 shadow-2xl">
             
-            {/* Starter Plan */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6 flex flex-col justify-between">
-              <div className="space-y-4">
-                <h3 className="text-lg font-bold text-white">Starter</h3>
-                <p className="text-xs text-slate-400">Perfect for indie hackers and small side-projects.</p>
-                <div className="text-3xl font-extrabold text-white">$19 <span className="text-xs font-normal text-slate-400">/ month</span></div>
-                <ul className="space-y-2 text-xs text-slate-300 pt-4 border-t border-slate-800">
-                  <li className="flex items-center gap-2">✓ Up to 500 events / mo</li>
-                  <li className="flex items-center gap-2">✓ Gemini 3.5 Flash triage</li>
-                  <li className="flex items-center gap-2">✓ Slack webhook alerts</li>
-                  <li className="flex items-center gap-2">✓ 14 days log retention</li>
-                </ul>
-              </div>
-              <Link href="/dashboard" className="block text-center w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold transition">
-                Start 14-day trial
-              </Link>
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <h3 className="text-lg font-bold text-white">Create New Project</h3>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="text-slate-400 hover:text-white text-sm"
+              >
+                ✕
+              </button>
             </div>
 
-            {/* Growth Plan (Most Popular) */}
-            <div className="bg-gradient-to-b from-blue-950/40 to-slate-900 border border-blue-500/30 rounded-2xl p-6 space-y-6 flex flex-col justify-between relative shadow-xl shadow-blue-500/5">
-              <span className="absolute -top-3 right-6 bg-blue-600 text-white font-semibold text-[10px] uppercase tracking-wider px-3 py-1 rounded-full">
-                Most Popular
-              </span>
+            {createdProject ? (
               <div className="space-y-4">
-                <h3 className="text-lg font-bold text-white">Growth</h3>
-                <p className="text-xs text-slate-400">For fast-growing SaaS apps with steady webhook volume.</p>
-                <div className="text-3xl font-extrabold text-white">$29 <span className="text-xs font-normal text-slate-400">/ month</span></div>
-                <ul className="space-y-2 text-xs text-slate-300 pt-4 border-t border-slate-800/80">
-                  <li className="flex items-center gap-2">✓ Up to 10,000 events / mo</li>
-                  <li className="flex items-center gap-2">✓ Gemini 3.5 Flash triage</li>
-                  <li className="flex items-center gap-2">✓ Multi-channel Slack alerts</li>
-                  <li className="flex items-center gap-2">✓ 60 days log retention & export</li>
-                </ul>
+                <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 rounded-xl text-xs space-y-2">
+                  <p className="font-bold text-sm">🎉 Project created successfully!</p>
+                  <p>Use the following ingest URL in your webhook provider settings:</p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <div className="flex-1 bg-slate-950 p-2.5 rounded font-mono text-[11px] text-white truncate border border-emerald-500/30">
+                      https://usehooklens.com/api/ingest/{createdProject.api_key}
+                    </div>
+                    <button
+                      onClick={() => copyToClipboard(createdProject.api_key)}
+                      className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold shrink-0 transition"
+                    >
+                      {copiedKey === createdProject.api_key ? '✓ Copied' : 'Copy'}
+                    </button>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsModalOpen(false)}
+                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition"
+                >
+                  Close & View Dashboard
+                </button>
               </div>
-              <Link href="/dashboard" className="block text-center w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition shadow-lg shadow-blue-500/20">
-                Start 14-day trial
-              </Link>
-            </div>
+            ) : (
+              <form onSubmit={handleCreateProject} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-300">Project Name *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Shopify Production, Stripe EU, Auth Webhooks"
+                    value={projectName}
+                    onChange={(e) => setProjectName(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
 
-            {/* Scale Plan */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6 flex flex-col justify-between">
-              <div className="space-y-4">
-                <h3 className="text-lg font-bold text-white">Scale</h3>
-                <p className="text-xs text-slate-400">For high-throughput systems and larger developer teams.</p>
-                <div className="text-3xl font-extrabold text-white">$49 <span className="text-xs font-normal text-slate-400">/ month</span></div>
-                <ul className="space-y-2 text-xs text-slate-300 pt-4 border-t border-slate-800">
-                  <li className="flex items-center gap-2">✓ Unlimited events</li>
-                  <li className="flex items-center gap-2">✓ Priority Gemini triage pipeline</li>
-                  <li className="flex items-center gap-2">✓ Unlimited log retention</li>
-                  <li className="flex items-center gap-2">✓ Multi-project API keys</li>
-                  <li className="flex items-center gap-2">✓ Priority email & chat support</li>
-                </ul>
-              </div>
-              <Link href="/dashboard" className="block text-center w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold transition">
-                Start 14-day trial
-              </Link>
-            </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-300">Slack Webhook URL (Optional)</label>
+                  <input
+                    type="url"
+                    placeholder="https://hooks.slack.com/services/..."
+                    value={slackUrl}
+                    onChange={(e) => setSlackUrl(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-300">Discord Webhook URL (Optional)</label>
+                  <input
+                    type="url"
+                    placeholder="https://discord.com/api/webhooks/..."
+                    value={discordUrl}
+                    onChange={(e) => setDiscordUrl(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                  />
+                  <p className="text-[11px] text-slate-500">
+                    You can provide Slack, Discord, or both.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isCreating}
+                    className="px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition disabled:opacity-50"
+                  >
+                    {isCreating ? 'Creating...' : 'Generate Endpoint'}
+                  </button>
+                </div>
+              </form>
+            )}
 
           </div>
         </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="border-t border-slate-900 py-10 text-center text-xs text-slate-500">
-        <p>© 2026 HookLens. Built for developers monitoring webhooks.</p>
-      </footer>
+      )}
 
     </div>
   );
