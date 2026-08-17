@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/utils/supabase/client';
+import { createClient } from '@supabase/supabase-js';
+
+function getSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+  return createClient(url, anonKey);
+}
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -12,7 +18,7 @@ export default function DashboardPage() {
   useEffect(() => {
     async function loadUser() {
       try {
-        const supabase = createClient();
+        const supabase = getSupabase();
         const { data } = await supabase.auth.getUser();
         if (data?.user?.email) {
           setUserEmail(data.user.email);
@@ -26,7 +32,7 @@ export default function DashboardPage() {
 
   const handleSignOut = async () => {
     try {
-      const supabase = createClient();
+      const supabase = getSupabase();
       await supabase.auth.signOut();
       router.push('/login');
     } catch (e) {
