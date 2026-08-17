@@ -1,3 +1,4 @@
+// v1.0.4 - portal integration
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
