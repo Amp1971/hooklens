@@ -110,11 +110,11 @@ export default function DashboardPage() {
       if (data.url) {
         window.location.href = data.url;
       } else {
-        alert(data.error || 'Kunne ikke åbne kundeportalen.');
+        alert(data.error || 'Could not open billing portal.');
       }
     } catch (err) {
       console.error('Portal error:', err);
-      alert('Der opstod en fejl ved forbindelse til Stripe portalen.');
+      alert('An error occurred while connecting to the Stripe portal.');
     } finally {
       setLoading(false);
     }
@@ -138,13 +138,13 @@ export default function DashboardPage() {
       if (newProj) setProjects(prev => [...prev, newProj]);
     } catch (err) {
       console.error(err);
-      alert('Fejl ved oprettelse af projekt.');
+      alert('Failed to create project.');
     } finally {
       setCreating(false);
     }
   };
 
-  // Filtreringslogik
+  // Filter Logic
   const filteredIncidents = useMemo(() => {
     return incidents.filter((inc) => {
       const matchesSearch =
@@ -166,7 +166,7 @@ export default function DashboardPage() {
     });
   }, [incidents, searchQuery, selectedProvider, selectedSeverity]);
 
-  // Nøgletal
+  // Metrics calculation
   const totalIncidents = incidents.length;
   const criticalAlerts = incidents.filter(i => i.severity?.toUpperCase() === 'CRITICAL').length;
   const timeSavedHours = (totalIncidents * 0.5).toFixed(1);
@@ -202,7 +202,7 @@ export default function DashboardPage() {
               <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">Operations Hub</span>
             </div>
             <p className="text-xs text-slate-400 mt-2">
-              Logged in as: <span className="text-slate-200 font-medium">{userEmail || 'Indlæser...'}</span>
+              Logged in as: <span className="text-slate-200 font-medium">{userEmail || 'Loading...'}</span>
             </p>
           </div>
 
@@ -219,7 +219,7 @@ export default function DashboardPage() {
               disabled={loading}
               className="px-4 py-2 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors shadow-sm flex items-center gap-1.5"
             >
-              {loading ? 'Åbner...' : 'Manage Subscription ⚙️'}
+              {loading ? 'Opening...' : 'Manage Subscription ⚙️'}
             </button>
 
             <button
@@ -271,11 +271,11 @@ export default function DashboardPage() {
                 <h2 className="text-sm font-semibold text-white">Live Incident Stream & Diagnostics</h2>
               </div>
               <span className="text-xs text-slate-400 font-mono">
-                Viser {filteredIncidents.length} af {incidents.length} events
+                Showing {filteredIncidents.length} of {incidents.length} events
               </span>
             </div>
 
-            {/* Søgefelt og dropdown-filtre */}
+            {/* Search and Filters */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-1">
               <div className="relative flex-1">
                 <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500 text-xs pointer-events-none">
@@ -283,7 +283,7 @@ export default function DashboardPage() {
                 </span>
                 <input
                   type="text"
-                  placeholder="Søg i fejl, kunde-id, årsag eller summary..."
+                  placeholder="Search incidents, customer reference, root cause, or summary..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full bg-slate-950/80 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
@@ -296,7 +296,7 @@ export default function DashboardPage() {
                   onChange={(e) => setSelectedProvider(e.target.value)}
                   className="bg-slate-950/80 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-blue-500"
                 >
-                  <option value="ALL">Alle Providers</option>
+                  <option value="ALL">All Providers</option>
                   <option value="stripe">Stripe</option>
                   <option value="woocommerce">WooCommerce</option>
                   <option value="paypal">PayPal</option>
@@ -308,7 +308,7 @@ export default function DashboardPage() {
                   onChange={(e) => setSelectedSeverity(e.target.value)}
                   className="bg-slate-950/80 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-blue-500"
                 >
-                  <option value="ALL">Alle Severities</option>
+                  <option value="ALL">All Severities</option>
                   <option value="CRITICAL">Critical</option>
                   <option value="HIGH">High</option>
                   <option value="MEDIUM">Medium</option>
@@ -319,7 +319,7 @@ export default function DashboardPage() {
                     onClick={() => { setSearchQuery(''); setSelectedProvider('ALL'); setSelectedSeverity('ALL'); }}
                     className="px-2.5 py-1.5 text-xs text-slate-400 hover:text-white bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 rounded-lg transition-colors"
                   >
-                    Nulstil
+                    Reset
                   </button>
                 )}
               </div>
@@ -327,13 +327,13 @@ export default function DashboardPage() {
           </div>
 
           {fetching ? (
-            <div className="p-12 text-center text-xs text-slate-400">Indlæser hændelser...</div>
+            <div className="p-12 text-center text-xs text-slate-400">Loading incidents...</div>
           ) : filteredIncidents.length === 0 ? (
             <div className="p-12 text-center space-y-3">
               <div className="inline-flex p-3 rounded-full bg-slate-800/50 text-slate-400">🔍</div>
-              <h3 className="text-sm font-semibold text-white">Ingen incidents matcher dine filtre</h3>
+              <h3 className="text-sm font-semibold text-white">No incidents match your criteria</h3>
               <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                Prøv at nulstille søgefeltet eller ændre provider/severity filtret ovenfor.
+                Try resetting your search query or adjusting your provider and severity filters.
               </p>
             </div>
           ) : (
@@ -355,7 +355,7 @@ export default function DashboardPage() {
                       <span className="text-xs font-semibold text-white">{inc.summary}</span>
                     </div>
                     <span className="text-[11px] text-slate-500 font-mono">
-                      {new Date(inc.created_at).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}
+                      {new Date(inc.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
 
@@ -382,7 +382,7 @@ export default function DashboardPage() {
 
       </div>
 
-      {/* Modal: Opret nyt Projekt */}
+      {/* Modal: Create New Project */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl">
@@ -411,13 +411,13 @@ export default function DashboardPage() {
                   disabled={creating}
                   className="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold py-2.5 rounded-lg transition-colors shadow-sm"
                 >
-                  {creating ? 'Opretter...' : 'Generate Endpoint & API Key'}
+                  {creating ? 'Creating...' : 'Generate Endpoint & API Key'}
                 </button>
               </form>
             ) : (
               <div className="space-y-4">
                 <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-xs text-emerald-400">
-                  🎉 Endpoint er oprettet! Brug denne URL til dine webhooks:
+                  🎉 Endpoint created! Use this URL to forward your webhooks:
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
@@ -431,7 +431,7 @@ export default function DashboardPage() {
                   onClick={() => setShowCreateModal(false)}
                   className="w-full bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold py-2 rounded-lg"
                 >
-                  Færdig
+                  Done
                 </button>
               </div>
             )}
@@ -439,7 +439,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Modal: Vis Raw Payload */}
+      {/* Modal: View Raw Payload */}
       {selectedIncident && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6 space-y-4 shadow-2xl">
@@ -465,7 +465,7 @@ export default function DashboardPage() {
                 onClick={() => setSelectedIncident(null)}
                 className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white rounded-lg"
               >
-                Luk
+                Close
               </button>
             </div>
           </div>
