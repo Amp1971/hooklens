@@ -2,19 +2,25 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2023-10-16' as any,
-});
+export const dynamic = 'force-dynamic';
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-);
+function getSupabaseAdmin() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+  return createClient(url, serviceKey);
+}
+
+function getStripe() {
+  return new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+    apiVersion: '2023-10-16' as any,
+  });
+}
 
 export async function POST(req: Request) {
   const body = await req.text();
   const signature = req.headers.get('stripe-signature') as string;
 
+  const stripe = getStripe();
   let event: Stripe.Event;
 
   try {
@@ -28,6 +34,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: err.message }, { status: 400 });
   }
 
+  const supabaseAdmin = getSupabaseAdmin();
+
   try {
     switch (event.type) {
       case 'checkout.session.completed': {
@@ -38,7 +46,6 @@ export async function POST(req: Request) {
         const tier = session.metadata?.plan_tier || 'starter';
 
         if (customerEmail) {
-          // 1. Find brugeren i Supabase Auth ud fra e-mail
           const { data: userData } = await supabaseAdmin.auth.admin.listUsers();
           const existingUser = userData?.users?.find(u => u.email?.toLowerCase() === customerEmail);
 
@@ -61,7 +68,7 @@ export async function POST(req: Request) {
       case 'customer.subscription.created': {
         const subscription = event.data.object as Stripe.Subscription;
         const customerId = subscription.customer as string;
-        const status = subscription.status; // 'active', 'trialing', 'past_due' osv.
+        const status = subscription.status;
 
         await supabaseAdmin
           .from('profiles')
