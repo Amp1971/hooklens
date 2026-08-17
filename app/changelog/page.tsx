@@ -45,6 +45,11 @@ export default function ChangelogPage() {
                     {entry.type}
                   </span>
                 </div>
+          <div className="border-l-2 border-emerald-500 pl-4 py-2 my-4 bg-slate-900/40 rounded-r-lg">
+            <span className="inline-block px-2 py-0.5 text-xs font-semibold text-emerald-400 bg-emerald-500/10 rounded">New Integration</span>
+            <h3 className="text-lg font-medium text-white mt-1">PayPal Webhook Monitoring & Triage</h3>
+            <p className="text-sm text-slate-400 mt-1">Full support for PayPal webhooks. Intercept payment denials, capture failures, subscription cancellations, and chargeback disputes with instant AI diagnostics.</p>
+          </div>
                 <h3 className="text-xl font-bold text-white tracking-tight">{entry.title}</h3>
                 <p className="text-slate-400 leading-relaxed">
                   {entry.description}
