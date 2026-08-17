@@ -140,12 +140,12 @@ export default function DashboardPage() {
 
     
   const handleManageSubscription = async () => {
-    if (!user) return;
+    if (!profile?.id) return;
     try {
       const res = await fetch('/api/stripe/portal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id }),
+        body: JSON.stringify({ userId: profile.id }),
       });
       const data = await res.json();
       if (data.url) {
