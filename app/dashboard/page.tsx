@@ -140,21 +140,33 @@ export default function DashboardPage() {
 
     
   const handleManageSubscription = async () => {
-    if (!profile?.id) return;
     try {
+      const { createClient } = await import('@/utils/supabase/client').catch(async () => {
+        return await import('@supabase/auth-helpers-nextjs');
+      });
+      // Fallback hvis standard helper findes
+      let userId: string | undefined;
+      
+      // Tjek vinduets Supabase session eller lav direkte kald
+      const supabase = typeof createClient === 'function' ? createClient() : null;
+      if (supabase?.auth) {
+        const { data } = await supabase.auth.getUser();
+        userId = data?.user?.id;
+      }
+
       const res = await fetch('/api/stripe/portal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: profile.id }),
+        body: JSON.stringify({ userId }),
       });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
+      const resData = await res.json();
+      if (resData.url) {
+        window.location.href = resData.url;
       } else {
-        alert(data.error || 'Failed to open customer portal');
+        alert(resData.error || 'Failed to open customer portal');
       }
     } catch (err) {
-      console.error('Error:', err);
+      console.error('Portal error:', err);
       alert('Could not connect to billing portal.');
     }
   };
