@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+'use client';
 // v1.0.4 - portal integration
 'use client';
 
