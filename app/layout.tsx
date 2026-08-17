@@ -35,7 +35,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={inter.className}>{children}        <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID || 'G-QSBN37MFQ7'} />
+      <body className={inter.className}>{children}        <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID || "G-QSBN37MFQ7"} />
       </body>
     </html>
   );
