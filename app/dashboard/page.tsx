@@ -138,7 +138,28 @@ export default function DashboardPage() {
 
     init();
 
-    return () => {
+    
+  const handleManageSubscription = async () => {
+    if (!user) return;
+    try {
+      const res = await fetch('/api/stripe/portal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert(data.error || 'Failed to open customer portal');
+      }
+    } catch (err) {
+      console.error('Error:', err);
+      alert('Could not connect to billing portal.');
+    }
+  };
+
+  return () => {
       mounted = false;
       authListener.subscription.unsubscribe();
     };
