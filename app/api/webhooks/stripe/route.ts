@@ -40,25 +40,38 @@ export async function POST(req: Request) {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
-        const customerEmail = session.customer_details?.email?.toLowerCase();
+        const customerEmail = session.customer_details?.email?.toLowerCase()?.trim();
         const customerId = session.customer as string;
         const subscriptionId = session.subscription as string;
         const tier = session.metadata?.plan_tier || 'starter';
 
         if (customerEmail) {
+          // 1. Tjek om brugeren findes i Supabase Auth
           const { data: userData } = await supabaseAdmin.auth.admin.listUsers();
-          const existingUser = userData?.users?.find(u => u.email?.toLowerCase() === customerEmail);
+          let user = userData?.users?.find(u => u.email?.toLowerCase() === customerEmail);
 
-          if (existingUser) {
+          // Hvis brugeren IKKE findes endnu (købte direkte fra landing page):
+          if (!user) {
+            const { data: newUser } = await supabaseAdmin.auth.admin.createUser({
+              email: customerEmail,
+              email_confirm: true,
+            });
+            user = newUser?.user || undefined;
+          }
+
+          if (user) {
+            // Upsert profilen med det korrekte plan_tier og Stripe IDs
             await supabaseAdmin
               .from('profiles')
-              .update({
+              .upsert({
+                id: user.id,
+                email: customerEmail,
                 plan_tier: tier,
                 subscription_status: 'active',
                 stripe_customer_id: customerId,
                 stripe_subscription_id: subscriptionId,
-              })
-              .eq('id', existingUser.id);
+                updated_at: new Date().toISOString(),
+              });
           }
         }
         break;
