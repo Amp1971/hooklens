@@ -5,6 +5,7 @@ export interface PlanLimits {
   name: string;
   priceUSD: number;
   maxMonthlyEvents: number;
+  graceMonthlyEvents: number; // 10% buffer
   maxProjects: number;
   retentionDays: number;
   allowDiscord: boolean;
@@ -17,6 +18,7 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     name: '14-Day Free Trial',
     priceUSD: 0,
     maxMonthlyEvents: 10000,
+    graceMonthlyEvents: 11000,
     maxProjects: 3,
     retentionDays: 14,
     allowDiscord: true,
@@ -27,6 +29,7 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     name: 'Starter Plan',
     priceUSD: 19,
     maxMonthlyEvents: 10000,
+    graceMonthlyEvents: 11000, // 10% buffer
     maxProjects: 3,
     retentionDays: 7,
     allowDiscord: false,
@@ -37,6 +40,7 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     name: 'Growth Plan',
     priceUSD: 29,
     maxMonthlyEvents: 100000,
+    graceMonthlyEvents: 110000, // 10% buffer
     maxProjects: 999999, // Unlimited
     retentionDays: 30,
     allowDiscord: true,
@@ -47,6 +51,7 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     name: 'Scale Plan',
     priceUSD: 49,
     maxMonthlyEvents: 999999999, // Unlimited
+    graceMonthlyEvents: 999999999,
     maxProjects: 999999, // Unlimited
     retentionDays: 90,
     allowDiscord: true,
@@ -73,7 +78,11 @@ export function checkUserAccess(profile: {
   const hasValidAccess = !isTrialExpired || isSubscriptionActive;
 
   const eventsCount = profile.monthly_events_count || 0;
-  const isEventLimitReached = eventsCount >= limits.maxMonthlyEvents;
+  
+  // Status flags for dashboard og API
+  const isWarning80 = eventsCount >= Math.floor(limits.maxMonthlyEvents * 0.8) && eventsCount < limits.maxMonthlyEvents;
+  const isInGracePeriod = eventsCount >= limits.maxMonthlyEvents && eventsCount < limits.graceMonthlyEvents;
+  const isHardLimitReached = eventsCount >= limits.graceMonthlyEvents;
 
   let daysRemainingInTrial = 0;
   if (status === 'trialing' && trialEnd) {
@@ -88,7 +97,9 @@ export function checkUserAccess(profile: {
     hasValidAccess,
     isTrialExpired,
     daysRemainingInTrial,
-    isEventLimitReached,
+    isWarning80,
+    isInGracePeriod,
+    isHardLimitReached,
     eventsCount,
   };
 }
