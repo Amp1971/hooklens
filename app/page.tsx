@@ -95,7 +95,7 @@ export default function LandingPage() {
         </h1>
 
         <p className="text-lg text-slate-400 max-w-2xl mx-auto leading-relaxed">
-          HookLens intercepts failed webhooks across Stripe, Shopify, GitHub and custom APIs, diagnoses the root cause in seconds with AI, and notifies your team directly in Slack & Discord.
+          HookLens intercepts failed webhooks across Stripe, PayPal, Shopify, GitHub and custom APIs, diagnoses the root cause in seconds with AI, and notifies your team directly in Slack & Discord.
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
