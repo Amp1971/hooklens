@@ -2,9 +2,15 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabaseClient';
+import { createClient } from '@supabase/supabase-js';
 
 const ADMIN_EMAIL = 'allan@usehooklens.com';
+
+function getSupabaseClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+  return createClient(url, anonKey);
+}
 
 export default function AdminPage() {
   const [data, setData] = useState<any>(null);
@@ -15,6 +21,7 @@ export default function AdminPage() {
   useEffect(() => {
     async function checkAuthAndLoad() {
       try {
+        const supabase = getSupabaseClient();
         const { data: authData } = await supabase.auth.getUser();
         const email = authData?.user?.email || null;
         setCurrentUserEmail(email);
