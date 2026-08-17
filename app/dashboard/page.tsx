@@ -350,7 +350,7 @@ export default function DashboardPage() {
               </h1>
             </div>
             <p className="text-sm text-slate-400 mt-1">
-              Logged in as <span className="text-slate-200 font-mono">{currentUser?.email}</span>
+              Logged in as: {profile?.email || userEmail || 'allan@alssund-massage.dk'} <span className="text-slate-200 font-mono">{currentUser?.email}</span>
             </p>
           </div>
 
