@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+    <linearGradient id="hookGradSquare" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="100%" stop-color="#2563EB" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background Card -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" stroke="#1E293B" stroke-width="12" />
+  
+  <!-- Outer Focus Reticle -->
+  <circle cx="256" cy="256" r="160" stroke="url(#hookGradSquare)" stroke-width="10" stroke-dasharray="24 16" opacity="0.35" />
+  
+  <!-- Inner Lens -->
+  <circle cx="256" cy="256" r="120" fill="#0B132B" stroke="#334155" stroke-width="6" />
+  
+  <!-- Hook Path -->
+  <path d="M210 280 C210 210, 280 180, 305 220 C325 255, 280 305, 245 305 C225 305, 225 280, 245 270 C260 260, 280 275, 280 285" 
+        stroke="url(#hookGradSquare)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+  
+  <!-- Central Pulse Dot -->
+  <circle cx="256" cy="256" r="18" fill="#38BDF8" />
+</svg>

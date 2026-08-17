@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" fill="none">
+  <defs>
+    <linearGradient id="ogBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#020617" />
+      <stop offset="50%" stop-color="#0F172A" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+    <linearGradient id="ogGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="100%" stop-color="#3B82F6" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#ogBg)" />
+  <circle cx="600" cy="200" r="350" fill="#2563EB" opacity="0.08" filter="blur(80px)" />
+
+  <!-- Logo Mark -->
+  <g transform="translate(540, 100) scale(1.5)">
+    <circle cx="40" cy="40" r="36" stroke="url(#ogGlow)" stroke-width="3" stroke-dasharray="8 4" opacity="0.5" />
+    <circle cx="40" cy="40" r="28" fill="#0F172A" stroke="#1E293B" stroke-width="2" />
+    <path d="M28 46 C28 32, 44 26, 50 34 C55 41, 46 52, 38 52 C34 52, 34 46, 38 44 C42 42, 45 45, 45 47" 
+          stroke="url(#ogGlow)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+    <circle cx="40" cy="40" r="4.5" fill="#38BDF8" />
+  </g>
+
+  <!-- Text -->
+  <text x="600" y="320" text-anchor="middle" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="900" font-size="64" letter-spacing="-1">
+    Hook<tspan fill="url(#ogGlow)">Lens</tspan>
+  </text>
+  <text x="600" y="385" text-anchor="middle" fill="#E2E8F0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="600" font-size="28">
+    AI Root-Cause Webhook Monitoring &amp; Alerting
+  </text>
+  <text x="600" y="435" text-anchor="middle" fill="#94A3B8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="400" font-size="20">
+    Catch failed Stripe, Shopify &amp; GitHub webhooks before your users notice.
+  </text>
+
+  <!-- Badge -->
+  <rect x="475" y="490" width="250" height="44" rx="22" fill="#1E293B" stroke="#334155" stroke-width="1.5" />
+  <text x="600" y="518" text-anchor="middle" fill="#38BDF8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="700" font-size="14" letter-spacing="1">
+    USEHOOKLENS.COM
+  </text>
+</svg>
