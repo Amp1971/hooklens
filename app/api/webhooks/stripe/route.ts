@@ -6,132 +6,93 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2023-10-16' as any,
 });
 
-// Brug Service Role Key så webhooken har rettigheder til at opdatere profiles
-const supabase = createClient(
+const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+  process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
 
 export async function POST(req: Request) {
   const body = await req.text();
-  const signature = req.headers.get('stripe-signature') || '';
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
+  const signature = req.headers.get('stripe-signature') as string;
 
   let event: Stripe.Event;
 
   try {
-    if (webhookSecret) {
-      event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-    } else {
-      event = JSON.parse(body);
-    }
+    event = stripe.webhooks.constructEvent(
+      body,
+      signature,
+      process.env.STRIPE_WEBHOOK_SECRET || ''
+    );
   } catch (err: any) {
-    console.error('⚠️ Stripe Webhook signature verification failed:', err.message);
-    return NextResponse.json({ error: 'Webhook Error: ' + err.message }, { status: 400 });
+    console.error(`Webhook signature verification failed: ${err.message}`);
+    return NextResponse.json({ error: err.message }, { status: 400 });
   }
 
   try {
     switch (event.type) {
-      // 1. Når en kunde gennemfører checkout og køber et abonnement
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
+        const customerEmail = session.customer_details?.email?.toLowerCase();
         const customerId = session.customer as string;
         const subscriptionId = session.subscription as string;
-        const clientReferenceId = session.client_reference_id; // Supabase user_id
+        const tier = session.metadata?.plan_tier || 'starter';
 
-        // Find ud af hvilken plan der blev købt ud fra beløb/metadata
-        let planTier = 'starter';
-        if (session.amount_total === 2900) planTier = 'growth';
-        if (session.amount_total === 4900) planTier = 'scale';
+        if (customerEmail) {
+          // 1. Find brugeren i Supabase Auth ud fra e-mail
+          const { data: userData } = await supabaseAdmin.auth.admin.listUsers();
+          const existingUser = userData?.users?.find(u => u.email?.toLowerCase() === customerEmail);
 
-        if (clientReferenceId) {
-          await supabase
-            .from('profiles')
-            .update({
-              stripe_customer_id: customerId,
-              stripe_subscription_id: subscriptionId,
-              plan_tier: planTier,
-              subscription_status: 'active',
-              monthly_events_count: 0,
-              monthly_ai_diagnoses_count: 0,
-              current_period_start: new Date().toISOString(),
-            })
-            .eq('id', clientReferenceId);
-        } else if (customerId) {
-          await supabase
-            .from('profiles')
-            .update({
-              stripe_subscription_id: subscriptionId,
-              plan_tier: planTier,
-              subscription_status: 'active',
-              monthly_events_count: 0,
-              monthly_ai_diagnoses_count: 0,
-              current_period_start: new Date().toISOString(),
-            })
-            .eq('stripe_customer_id', customerId);
+          if (existingUser) {
+            await supabaseAdmin
+              .from('profiles')
+              .update({
+                plan_tier: tier,
+                subscription_status: 'active',
+                stripe_customer_id: customerId,
+                stripe_subscription_id: subscriptionId,
+              })
+              .eq('id', existingUser.id);
+          }
         }
         break;
       }
 
-      // 2. Månedlig fornyelse - nulstil tællere og sæt status til active
-      case 'invoice.payment_succeeded': {
-        const invoice = event.data.object as any;
-        const customerId = invoice.customer as string;
+      case 'customer.subscription.updated':
+      case 'customer.subscription.created': {
+        const subscription = event.data.object as Stripe.Subscription;
+        const customerId = subscription.customer as string;
+        const status = subscription.status; // 'active', 'trialing', 'past_due' osv.
 
-        if (customerId) {
-          await supabase
-            .from('profiles')
-            .update({
-              monthly_events_count: 0,
-              monthly_ai_diagnoses_count: 0,
-              subscription_status: 'active',
-              current_period_start: new Date().toISOString(),
-            })
-            .eq('stripe_customer_id', customerId);
-        }
+        await supabaseAdmin
+          .from('profiles')
+          .update({
+            subscription_status: status === 'trialing' ? 'active' : status,
+          })
+          .eq('stripe_customer_id', customerId);
         break;
       }
 
-      // 3. Manglende betaling (kort afvist)
-      case 'invoice.payment_failed': {
-        const invoice = event.data.object as any;
-        const customerId = invoice.customer as string;
-
-        if (customerId) {
-          await supabase
-            .from('profiles')
-            .update({
-              subscription_status: 'past_due',
-            })
-            .eq('stripe_customer_id', customerId);
-        }
-        break;
-      }
-
-      // 4. Opsagt abonnement
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription;
         const customerId = subscription.customer as string;
 
-        if (customerId) {
-          await supabase
-            .from('profiles')
-            .update({
-              plan_tier: 'trial',
-              subscription_status: 'canceled',
-            })
-            .eq('stripe_customer_id', customerId);
-        }
+        await supabaseAdmin
+          .from('profiles')
+          .update({
+            plan_tier: 'trial',
+            subscription_status: 'canceled',
+          })
+          .eq('stripe_customer_id', customerId);
         break;
       }
 
       default:
-        console.log(`Unhandled Stripe event type: ${event.type}`);
+        break;
     }
 
     return NextResponse.json({ received: true });
   } catch (error: any) {
-    console.error('Error handling Stripe webhook:', error);
-    return NextResponse.json({ error: 'Webhook handler failed' }, { status: 500 });
+    console.error('Error handling webhook event:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
