@@ -72,7 +72,7 @@ export default function DocsPage() {
             <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 space-y-2">
               <p className="text-xs font-bold text-white">Need another provider?</p>
               <p className="text-xs text-slate-400">
-                We are actively adding guides for Twilio, Paddle, and Lemon Squeezy. Reach out to request a priority guide.
+                HookLens natively supports Stripe, Shopify, PayPal, WooCommerce, and GitHub. Reach out if you need a setup guide for another service.
               </p>
               <a
                 href="mailto:allan@usehooklens.com"
