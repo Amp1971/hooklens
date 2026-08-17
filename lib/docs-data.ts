@@ -54,7 +54,9 @@ export const docGuides: DocGuide[] = [
   {
     id: 'shopify-setup',
     category: 'E-Commerce Platforms',
-    title: 'Connecting Shopify Webhooks to HookLens',
+    title: 'Connecting Shopify Webhooks
+PayPal Webhooks
+WooCommerce Webhooks to HookLens',
     badge: 'E-Commerce',
     difficulty: 'Beginner (No-Code)',
     description: 'Track Shopify orders, customer updates, and inventory syncs. Catch 504 gateway timeouts and broken fulfillment hooks before customers notice.',

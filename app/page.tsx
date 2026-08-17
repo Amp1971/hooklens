@@ -234,7 +234,9 @@ export default function LandingPage() {
             <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider mb-3">Integrations</h4>
             <ul className="space-y-2 text-xs">
               <li><span className="text-slate-300">Stripe Webhooks</span></li>
-              <li><span className="text-slate-300">Shopify Webhooks</span></li>
+              <li><span className="text-slate-300">Shopify Webhooks
+PayPal Webhooks
+WooCommerce Webhooks</span></li>
               <li><span className="text-slate-500">GitHub (Coming Soon)</span></li>
               <li><span className="text-slate-500">Twilio (Coming Soon)</span></li>
             </ul>
