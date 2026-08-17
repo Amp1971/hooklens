@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 
@@ -39,6 +39,11 @@ export default function DashboardPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
 
+  // Filter & Search States
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedProvider, setSelectedProvider] = useState('ALL');
+  const [selectedSeverity, setSelectedSeverity] = useState('ALL');
+
   // Modal State for New Project
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [projectName, setProjectName] = useState('');
@@ -60,15 +65,13 @@ export default function DashboardPage() {
         setUserEmail(user.email || '');
         setUserId(user.id);
 
-        // 1. Hent projekter
         const { data: projs } = await supabase
           .from('projects')
           .select('*')
           .eq('user_id', user.id);
         if (projs) setProjects(projs);
 
-        // 2. Hent incidents (webhook_events)
-        const { data: events, error: evErr } = await supabase
+        const { data: events } = await supabase
           .from('webhook_events')
           .select('*')
           .order('created_at', { ascending: false });
@@ -123,29 +126,16 @@ export default function DashboardPage() {
 
     try {
       setCreating(true);
-      const res = await fetch('/api/projects/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: projectName }),
-      });
+      const randomKey = 'hl_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      const supabase = getSupabase();
+      const { data: newProj } = await supabase.from('projects').insert({
+        user_id: userId,
+        name: projectName,
+        api_key: randomKey
+      }).select().single();
 
-      const data = await res.json();
-      if (res.ok && data.apiKey) {
-        setCreatedKey(data.apiKey);
-        setProjects(prev => [...prev, { id: data.id || 'new', name: projectName, api_key: data.apiKey }]);
-      } else {
-        // Fallback hvis API-ruten ikke er oprettet
-        const randomKey = 'hl_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-        const supabase = getSupabase();
-        const { data: newProj } = await supabase.from('projects').insert({
-          user_id: userId,
-          name: projectName,
-          api_key: randomKey
-        }).select().single();
-
-        setCreatedKey(randomKey);
-        if (newProj) setProjects(prev => [...prev, newProj]);
-      }
+      setCreatedKey(randomKey);
+      if (newProj) setProjects(prev => [...prev, newProj]);
     } catch (err) {
       console.error(err);
       alert('Fejl ved oprettelse af projekt.');
@@ -154,7 +144,29 @@ export default function DashboardPage() {
     }
   };
 
-  // Beregn nøgletal
+  // Filtreringslogik
+  const filteredIncidents = useMemo(() => {
+    return incidents.filter((inc) => {
+      const matchesSearch =
+        searchQuery === '' ||
+        inc.summary?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        inc.affected_user?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        inc.root_cause?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        inc.service?.toLowerCase().includes(searchQuery.toLowerCase());
+
+      const matchesProvider =
+        selectedProvider === 'ALL' ||
+        inc.service?.toLowerCase() === selectedProvider.toLowerCase();
+
+      const matchesSeverity =
+        selectedSeverity === 'ALL' ||
+        inc.severity?.toUpperCase() === selectedSeverity.toUpperCase();
+
+      return matchesSearch && matchesProvider && matchesSeverity;
+    });
+  }, [incidents, searchQuery, selectedProvider, selectedSeverity]);
+
+  // Nøgletal
   const totalIncidents = incidents.length;
   const criticalAlerts = incidents.filter(i => i.severity?.toUpperCase() === 'CRITICAL').length;
   const timeSavedHours = (totalIncidents * 0.5).toFixed(1);
@@ -250,29 +262,83 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Live Incident Stream */}
+        {/* Live Incident Stream Header & Filters */}
         <div className="bg-slate-900/40 border border-slate-800/80 rounded-xl overflow-hidden shadow-sm">
-          <div className="p-4 border-b border-slate-800/80 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-              <h2 className="text-sm font-semibold text-white">Live Incident Stream & Diagnostics</h2>
+          <div className="p-4 border-b border-slate-800/80 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <h2 className="text-sm font-semibold text-white">Live Incident Stream & Diagnostics</h2>
+              </div>
+              <span className="text-xs text-slate-400 font-mono">
+                Viser {filteredIncidents.length} af {incidents.length} events
+              </span>
             </div>
-            <span className="text-xs text-slate-400 font-mono">{incidents.length} events logged</span>
+
+            {/* Søgefelt og dropdown-filtre */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-1">
+              <div className="relative flex-1">
+                <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500 text-xs pointer-events-none">
+                  🔍
+                </span>
+                <input
+                  type="text"
+                  placeholder="Søg i fejl, kunde-id, årsag eller summary..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-slate-950/80 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <select
+                  value={selectedProvider}
+                  onChange={(e) => setSelectedProvider(e.target.value)}
+                  className="bg-slate-950/80 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-blue-500"
+                >
+                  <option value="ALL">Alle Providers</option>
+                  <option value="stripe">Stripe</option>
+                  <option value="woocommerce">WooCommerce</option>
+                  <option value="paypal">PayPal</option>
+                  <option value="shopify">Shopify</option>
+                </select>
+
+                <select
+                  value={selectedSeverity}
+                  onChange={(e) => setSelectedSeverity(e.target.value)}
+                  className="bg-slate-950/80 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-blue-500"
+                >
+                  <option value="ALL">Alle Severities</option>
+                  <option value="CRITICAL">Critical</option>
+                  <option value="HIGH">High</option>
+                  <option value="MEDIUM">Medium</option>
+                </select>
+
+                {(searchQuery || selectedProvider !== 'ALL' || selectedSeverity !== 'ALL') && (
+                  <button
+                    onClick={() => { setSearchQuery(''); setSelectedProvider('ALL'); setSelectedSeverity('ALL'); }}
+                    className="px-2.5 py-1.5 text-xs text-slate-400 hover:text-white bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 rounded-lg transition-colors"
+                  >
+                    Nulstil
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
           {fetching ? (
             <div className="p-12 text-center text-xs text-slate-400">Indlæser hændelser...</div>
-          ) : incidents.length === 0 ? (
+          ) : filteredIncidents.length === 0 ? (
             <div className="p-12 text-center space-y-3">
-              <div className="inline-flex p-3 rounded-full bg-blue-500/10 text-blue-400">⚡</div>
-              <h3 className="text-base font-semibold text-white">Ingen aktive incidents endnu</h3>
-              <p className="text-xs text-slate-400 max-w-md mx-auto">
-                Dine webhooks vil blive analyseret i realtid med root-cause analyse, så snart data sendes til dine endpoints.
+              <div className="inline-flex p-3 rounded-full bg-slate-800/50 text-slate-400">🔍</div>
+              <h3 className="text-sm font-semibold text-white">Ingen incidents matcher dine filtre</h3>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                Prøv at nulstille søgefeltet eller ændre provider/severity filtret ovenfor.
               </p>
             </div>
           ) : (
             <div className="divide-y divide-slate-800/60">
-              {incidents.map((inc) => (
+              {filteredIncidents.map((inc) => (
                 <div 
                   key={inc.id}
                   onClick={() => setSelectedIncident(inc)}
