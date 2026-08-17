@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 // v1.0.4 - portal integration
 'use client';
 
@@ -39,6 +40,27 @@ interface Project {
 }
 
 export default function DashboardPage() {
+  const [userEmail, setUserEmail] = useState<string>("");
+
+  useEffect(() => {
+    async function loadUser() {
+      try {
+        const { createClient } = await import('@supabase/supabase-js');
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+        const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+        if (!url || !key) return;
+        const supabase = createClient(url, key);
+        const { data } = await supabase.auth.getUser();
+        if (data?.user?.email) {
+          setUserEmail(data.user.email);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    loadUser();
+  }, []);
+
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
@@ -350,7 +372,7 @@ export default function DashboardPage() {
               </h1>
             </div>
             <p className="text-sm text-slate-400 mt-1">
-              Logged in as: {profile?.email || userEmail || 'allan@alssund-massage.dk'} <span className="text-slate-200 font-mono">{currentUser?.email}</span>
+              Logged in as {userEmail || 'allan@alssund-massage.dk'} <span className="text-slate-200 font-mono">{currentUser?.email}</span>
             </p>
           </div>
 
