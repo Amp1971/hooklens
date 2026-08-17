@@ -26,6 +26,27 @@ export default function TrialBanner({
   const isInGrace = eventsCount >= maxEvents && eventsCount < graceEvents;
   const isHardBlocked = eventsCount >= graceEvents;
 
+    if (status === 'past_due') {
+    return (
+      <div className="bg-rose-950/50 border border-rose-500/50 rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 mb-6 shadow-xl">
+        <div className="space-y-1 text-center sm:text-left">
+          <p className="text-sm font-bold text-rose-300">
+            ⚠️ Payment Failed for Your Active Subscription
+          </p>
+          <p className="text-xs text-rose-200/70">
+            Stripe was unable to charge your payment method. Please update your billing details to maintain uninterrupted monitoring.
+          </p>
+        </div>
+        <Link
+          href="/#pricing"
+          className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold uppercase tracking-wider transition shrink-0"
+        >
+          Update Billing &rarr;
+        </Link>
+      </div>
+    );
+  }
+
   if (isExpired) {
     return (
       <div className="bg-red-950/40 border border-red-500/40 rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 mb-6 shadow-xl">
