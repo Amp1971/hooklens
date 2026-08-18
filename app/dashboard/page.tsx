@@ -123,8 +123,9 @@ export default function DashboardPage() {
     loadData();
   }, [router]);
 
-  const profStatus = (profile?.subscription_status || '').toLowerCase();
-  const hasActiveAccess = Boolean(profile?.stripe_customer_id) && (profStatus === 'active' || profStatus === 'trialing' || profStatus === 'starter' || profStatus === 'growth' || profStatus === 'scale');
+  const isAdmin = (userEmail || '').toLowerCase() === 'allan@usehooklens.com';
+  const profStatus = isAdmin ? 'scale' : (profile?.subscription_status || '').toLowerCase();
+  const hasActiveAccess = isAdmin || (Boolean(profile?.stripe_customer_id) && (profStatus === 'active' || profStatus === 'trialing' || profStatus === 'starter' || profStatus === 'growth' || profStatus === 'scale');
 
   const handleSignOut = async () => {
     try {
