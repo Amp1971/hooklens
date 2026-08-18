@@ -37,42 +37,42 @@ export async function POST(
     const geminiKey = process.env.GEMINI_API_KEY;
 
     let triage = {
-      service: 'Webhook',
+      service: payload?.type?.startsWith('checkout.') || payload?.type?.includes('intent') ? 'Stripe' : 'Webhook',
       severity: 'MEDIUM',
       affected_user: 'N/A',
       summary: payload?.type || 'Webhook event received',
-      root_cause: 'Raw payload processed without AI analysis',
-      suggested_fix: 'Check raw payload in dashboard',
+      root_cause: 'Payload processed',
+      suggested_fix: 'Review event details in dashboard',
     };
 
-    // 2. Dynamisk AI Triage med Gemini (forstår alle platforme)
+    // 2. Dynamisk AI Triage med Gemini 2.5 Flash
     if (geminiKey) {
       try {
         const prompt = `You are HookLens AI, an automated webhook reliability and incident triage engine.
-Analyze this webhook payload from any service (Stripe, WooCommerce, PayPal, Shopify, Paddle, GitHub, Supabase, etc.).
+Analyze this webhook payload from any platform (Stripe, WooCommerce, PayPal, Shopify, Paddle, GitHub, Supabase, etc.).
 
-Analyze what happened, determine severity, identify customer/user (if any), diagnose the exact root cause, and formulate a clear, actionable solution for the developer.
+Diagnose what happened, determine severity, extract affected customer email/ID, state the technical root cause, and provide a clear actionable developer solution.
 
 Respond ONLY with a valid JSON object matching this schema:
 {
-  "service": "Service name (e.g. Stripe, WooCommerce, PayPal, Shopify)",
+  "service": "Platform name (e.g. Stripe, WooCommerce, PayPal, Shopify)",
   "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
   "affected_user": "Customer email, customer ID, user reference or 'N/A'",
-  "summary": "Concise 1-sentence explanation of what occurred in plain English",
+  "summary": "Concise 1-sentence explanation in plain English",
   "root_cause": "Specific technical root cause based on payload codes/errors/cancellation reasons in plain English",
-  "suggested_fix": "Concrete developer or business action to resolve or follow up in plain English"
+  "suggested_fix": "Actionable developer or merchant guidance to resolve or follow up in plain English"
 }
 
 Payload data:
 ${JSON.stringify(payload).slice(0, 10000)}`;
 
         const aiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              contents: [{ role: 'user', parts: [{ text: prompt }] }],
+              contents: [{ parts: [{ text: prompt }] }],
               generationConfig: {
                 responseMimeType: 'application/json',
                 temperature: 0.2,
@@ -88,14 +88,12 @@ ${JSON.stringify(payload).slice(0, 10000)}`;
             triage = JSON.parse(rawText);
           }
         } else {
-          const errorDetails = await aiRes.text();
-          console.error('Gemini API Error details:', errorDetails);
+          const errBody = await aiRes.text();
+          console.error('Gemini API Error:', errBody);
         }
       } catch (aiErr) {
-        console.error('AI Triage execution failed:', aiErr);
+        console.error('AI Triage execution error:', aiErr);
       }
-    } else {
-      console.warn('GEMINI_API_KEY is not defined in environment variables.');
     }
 
     // 3. Gem den AI-analyserede hændelse i Supabase
@@ -116,6 +114,54 @@ ${JSON.stringify(payload).slice(0, 10000)}`;
 
     if (dbError) {
       console.error('Database Ingest Error:', dbError);
+    }
+
+    // 4. Slack Notifikation
+    const slackUrl = project.slack_webhook_url || process.env.SLACK_WEBHOOK_URL;
+    if (slackUrl) {
+      const color = triage.severity === 'CRITICAL' ? '#E01E5A' : triage.severity === 'HIGH' ? '#ECB22E' : '#2EB67D';
+      const slackMessage = {
+        attachments: [
+          {
+            color: color,
+            blocks: [
+              {
+                type: 'header',
+                text: {
+                  type: 'plain_text',
+                  text: `🚨 [${triage.severity}] ${triage.service} Incident: ${project.name}`,
+                  emoji: true,
+                },
+              },
+              {
+                type: 'section',
+                fields: [
+                  { type: 'mrkdwn', text: `*Affected User:*\n\`${triage.affected_user}\`` },
+                  { type: 'mrkdwn', text: `*Project:*\n${project.name}` },
+                ],
+              },
+              {
+                type: 'section',
+                text: { type: 'mrkdwn', text: `*Summary:*\n${triage.summary}` },
+              },
+              {
+                type: 'section',
+                text: { type: 'mrkdwn', text: `*Root Cause:*\n${triage.root_cause}` },
+              },
+              {
+                type: 'section',
+                text: { type: 'mrkdwn', text: `*Suggested Fix:*\n${triage.suggested_fix}` },
+              },
+            ],
+          },
+        ],
+      };
+
+      await fetch(slackUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(slackMessage),
+      }).catch((err) => console.error('Slack Send Error:', err));
     }
 
     return NextResponse.json({
