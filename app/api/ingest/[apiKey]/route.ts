@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { GoogleGenAI } from '@google/genai';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +19,7 @@ export async function POST(
 
     const supabaseAdmin = getSupabaseAdmin();
 
-    // 1. Verificer projektet ud fra API-nøglen via Admin Client
+    // 1. Verificer projektet ud fra API-nøglen
     const { data: project, error: projectError } = await supabaseAdmin
       .from('projects')
       .select('*')
@@ -36,64 +35,68 @@ export async function POST(
 
     const payload = await request.json();
 
-    // 2. Kør AI Triage med Gemini
+    // 2. Kør AI Triage med direkte Gemini REST API
     let triage = {
-      service: 'Stripe',
-      severity: 'HIGH',
+      service: payload?.type?.startsWith('checkout.') ? 'Stripe' : 'Generic',
+      severity: 'MEDIUM',
       affected_user: 'N/A',
-      summary: 'Webhook event received',
-      root_cause: 'Payload captured for analysis',
-      suggested_fix: 'Check webhook details in payload',
+      summary: payload?.type || 'Webhook event received',
+      root_cause: 'Payload event triggered',
+      suggested_fix: 'Review event details in dashboard',
     };
 
-    if (process.env.GEMINI_API_KEY) {
+    const geminiKey = process.env.GEMINI_API_KEY;
+    if (geminiKey) {
       try {
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-        const prompt = `
-You are an expert webhook failure monitoring assistant (HookLens AI).
-Analyze the following webhook payload, detect the platform/source (e.g. Stripe, Shopify, GitHub, Supabase),
-severity level, affected customer/user, root cause, and an actionable suggested fix.
-
-Return ONLY valid JSON matching this schema:
-{
-  "service": "Service name",
-  "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
-  "affected_user": "User email or ID or 'N/A'",
-  "summary": "One sentence summary in English",
-  "root_cause": "Exact technical root cause in English",
-  "suggested_fix": "Actionable developer fix in English"
-}
+        const prompt = `You are HookLens AI, an expert webhook monitoring engine.
+Analyze this webhook payload. Detect service/source (e.g. Stripe, Shopify, GitHub), severity level, affected customer email/ID, root cause, and actionable fix.
 
 Payload:
 ${JSON.stringify(payload, null, 2)}
-`;
 
-        const aiResponse = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: prompt,
-          config: {
-            responseMimeType: 'application/json',
-          },
+Respond ONLY with a valid JSON object matching this schema:
+{
+  "service": "Stripe" | "Shopify" | "PayPal" | "WooCommerce" | "Other",
+  "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
+  "affected_user": "User email or customer ID or 'N/A'",
+  "summary": "Short descriptive summary",
+  "root_cause": "Exact technical root cause",
+  "suggested_fix": "Actionable developer guidance to resolve or mitigate"
+}`;
+
+        const aiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { responseMimeType: 'application/json' }
+          })
         });
 
-        const triageText = aiResponse.text;
-        if (triageText) {
-          triage = JSON.parse(triageText);
+        if (aiRes.ok) {
+          const aiJson = await aiRes.json();
+          const rawText = aiJson.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (rawText) {
+            triage = JSON.parse(rawText);
+          }
+        } else {
+          const errBody = await aiRes.text();
+          console.error('Gemini API Error Response:', errBody);
         }
       } catch (aiErr) {
-        console.error('AI Triage error fallback:', aiErr);
+        console.error('AI Triage exception:', aiErr);
       }
     }
 
-    // 3. Gem hændelsen i Supabase via Admin Client
+    // 3. Gem hændelsen i Supabase
     const { data: savedEvent, error: dbError } = await supabaseAdmin
       .from('webhook_events')
       .insert({
         project_id: project.id,
         service: triage.service || 'Stripe',
-        severity: triage.severity || 'HIGH',
+        severity: triage.severity || 'MEDIUM',
         affected_user: triage.affected_user || 'N/A',
-        summary: triage.summary || 'Webhook received',
+        summary: triage.summary || 'Webhook event received',
         root_cause: triage.root_cause || '',
         suggested_fix: triage.suggested_fix || '',
         raw_payload: payload,
