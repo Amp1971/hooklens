@@ -9,51 +9,6 @@ function getSupabaseAdmin() {
   return createClient(url, key);
 }
 
-// Intelligent regel-baseret triage til øjeblikkelig analyse
-function parseStripeEvent(type: string, dataObj: any) {
-  switch (type) {
-    case 'checkout.session.expired':
-      return {
-        service: 'Stripe',
-        severity: 'HIGH',
-        affected_user: dataObj?.customer_details?.email || dataObj?.customer || dataObj?.id || 'N/A',
-        summary: 'Checkout session expired without payment completion',
-        root_cause: 'Customer abandoned the checkout flow before completing payment within the session window.',
-        suggested_fix: 'Send an automated cart abandonment recovery email with a fresh checkout link.',
-      };
-    case 'payment_intent.payment_failed':
-    case 'charge.failed':
-      return {
-        service: 'Stripe',
-        severity: 'CRITICAL',
-        affected_user: dataObj?.customer || dataObj?.billing_details?.email || 'N/A',
-        summary: `Payment failed: ${dataObj?.last_payment_error?.message || dataObj?.failure_message || 'Declined'}`,
-        root_cause: dataObj?.last_payment_error?.code || dataObj?.failure_code || 'card_declined',
-        suggested_fix: 'Notify customer to update payment method or retry with 3D Secure verification.',
-      };
-    case 'customer.subscription.deleted':
-      return {
-        service: 'Stripe',
-        severity: 'HIGH',
-        affected_user: dataObj?.customer || 'N/A',
-        summary: 'Customer subscription canceled',
-        root_cause: 'Subscription reached period end or was canceled via billing portal.',
-        suggested_fix: 'Trigger offboarding survey and churn mitigation outreach.',
-      };
-    case 'invoice.payment_failed':
-      return {
-        service: 'Stripe',
-        severity: 'CRITICAL',
-        affected_user: dataObj?.customer_email || dataObj?.customer || 'N/A',
-        summary: 'Recurring invoice payment failed',
-        root_cause: dataObj?.last_payment_error?.message || 'Invoice charge failure',
-        suggested_fix: 'Initiate Smart Retries / Dunning sequence before revoking access.',
-      };
-    default:
-      return null;
-  }
-}
-
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ apiKey: string }> | { apiKey: string } }
@@ -79,66 +34,79 @@ export async function POST(
     }
 
     const payload = await request.json();
-    const eventType = payload?.type || 'webhook.event';
-    const dataObj = payload?.data?.object || payload;
+    const geminiKey = process.env.GEMINI_API_KEY;
 
-    // 2. Kør regel-baseret analyse først
-    let triage = parseStripeEvent(eventType, dataObj) || {
-      service: eventType.includes('.') ? 'Stripe' : 'Generic',
+    let triage = {
+      service: 'Webhook',
       severity: 'MEDIUM',
-      affected_user: dataObj?.customer_email || dataObj?.email || dataObj?.customer || 'N/A',
-      summary: `Webhook event: ${eventType}`,
-      root_cause: 'Webhook delivered to ingest endpoint',
-      suggested_fix: 'Inspect payload details',
+      affected_user: 'N/A',
+      summary: payload?.type || 'Webhook event received',
+      root_cause: 'Raw payload processed without AI analysis',
+      suggested_fix: 'Check raw payload in dashboard',
     };
 
-    // 3. Hvis Gemini AI er tilgængelig og hændelsen er ukendt, kør LLM triage
-    const geminiKey = process.env.GEMINI_API_KEY;
-    if (geminiKey && (!triage || triage.severity === 'MEDIUM')) {
+    // 2. Dynamisk AI Triage med Gemini (forstår alle platforme)
+    if (geminiKey) {
       try {
-        const prompt = `You are HookLens AI. Analyze this webhook payload JSON and provide diagnosis.
-Respond ONLY with JSON matching:
-{
-  "service": "Service name",
-  "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
-  "affected_user": "email or user ID or N/A",
-  "summary": "Clear summary in English",
-  "root_cause": "Technical root cause in English",
-  "suggested_fix": "Actionable developer fix in English"
-}
-Payload:
-${JSON.stringify(payload).slice(0, 4000)}`;
+        const prompt = `You are HookLens AI, an automated webhook reliability and incident triage engine.
+Analyze this webhook payload from any service (Stripe, WooCommerce, PayPal, Shopify, Paddle, GitHub, Supabase, etc.).
 
-        const aiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseMimeType: 'application/json' }
-          })
-        });
+Analyze what happened, determine severity, identify customer/user (if any), diagnose the exact root cause, and formulate a clear, actionable solution for the developer.
+
+Respond ONLY with a valid JSON object matching this schema:
+{
+  "service": "Service name (e.g. Stripe, WooCommerce, PayPal, Shopify)",
+  "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
+  "affected_user": "Customer email, customer ID, user reference or 'N/A'",
+  "summary": "Concise 1-sentence explanation of what occurred in plain English",
+  "root_cause": "Specific technical root cause based on payload codes/errors/cancellation reasons in plain English",
+  "suggested_fix": "Concrete developer or business action to resolve or follow up in plain English"
+}
+
+Payload data:
+${JSON.stringify(payload).slice(0, 10000)}`;
+
+        const aiRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ role: 'user', parts: [{ text: prompt }] }],
+              generationConfig: {
+                responseMimeType: 'application/json',
+                temperature: 0.2,
+              },
+            }),
+          }
+        );
 
         if (aiRes.ok) {
-          const aiJson = await aiRes.json();
-          const rawText = aiJson.candidates?.[0]?.content?.parts?.[0]?.text;
+          const aiData = await aiRes.json();
+          const rawText = aiData?.candidates?.[0]?.content?.parts?.[0]?.text;
           if (rawText) {
             triage = JSON.parse(rawText);
           }
+        } else {
+          const errorDetails = await aiRes.text();
+          console.error('Gemini API Error details:', errorDetails);
         }
-      } catch (err) {
-        console.error('Gemini call error:', err);
+      } catch (aiErr) {
+        console.error('AI Triage execution failed:', aiErr);
       }
+    } else {
+      console.warn('GEMINI_API_KEY is not defined in environment variables.');
     }
 
-    // 4. Gem hændelsen i Supabase
+    // 3. Gem den AI-analyserede hændelse i Supabase
     const { data: savedEvent, error: dbError } = await supabaseAdmin
       .from('webhook_events')
       .insert({
         project_id: project.id,
-        service: triage.service || 'Stripe',
-        severity: triage.severity || 'HIGH',
+        service: triage.service || 'Webhook',
+        severity: triage.severity || 'MEDIUM',
         affected_user: triage.affected_user || 'N/A',
-        summary: triage.summary || eventType,
+        summary: triage.summary || 'Webhook Event',
         root_cause: triage.root_cause || '',
         suggested_fix: triage.suggested_fix || '',
         raw_payload: payload,
@@ -155,7 +123,7 @@ ${JSON.stringify(payload).slice(0, 4000)}`;
       data: savedEvent || triage,
     });
   } catch (error: any) {
-    console.error('Ingest Error:', error);
+    console.error('Ingest Route Fatal Error:', error);
     return NextResponse.json(
       { success: false, error: error.message || 'Internal error' },
       { status: 500 }
