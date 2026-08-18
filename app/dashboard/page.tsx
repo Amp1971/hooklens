@@ -47,6 +47,7 @@ export default function DashboardPage() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Filter & Search States
   const [searchQuery, setSearchQuery] = useState('');
@@ -87,7 +88,8 @@ export default function DashboardPage() {
         setProfile(prof);
 
         const status = (prof?.subscription_status || '').toLowerCase();
-        const hasAccess = Boolean(prof?.stripe_customer_id) && (status === 'active' || status === 'trialing' || status === 'starter' || status === 'growth' || status === 'scale');
+        const isOwnerAdmin = (user.email || '').toLowerCase() === 'allan@usehooklens.com';
+        const hasAccess = isOwnerAdmin || (Boolean(prof?.stripe_customer_id) && (status === 'active' || status === 'trialing' || status === 'starter' || status === 'growth' || status === 'scale'));
 
         if (hasAccess) {
           const { data: projs } = await supabase
@@ -251,7 +253,7 @@ export default function DashboardPage() {
     return 'bg-slate-500/10 text-slate-400 border-slate-500/20';
   };
 
-  const planDisplayName = (profile?.plan_tier || 'starter').toUpperCase();
+  const planDisplayName = (isAdmin ? 'scale' : profile?.plan_tier || 'starter').toUpperCase();
 
   return (
     <div className="min-h-screen bg-[#070b14] text-slate-100 p-6 md:p-10 font-sans">
@@ -357,6 +359,56 @@ export default function DashboardPage() {
             <p className="text-xs text-slate-500 mt-1">Configured webhook channels</p>
           </div>
         </div>
+
+        {/* Active Endpoints Overview */}
+        {projects && projects.length > 0 && (
+          <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-5 space-y-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                  Configured Ingestion Endpoints
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">Use these URLs as your destination webhooks in Stripe or other providers.</p>
+              </div>
+              <span className="text-xs font-mono bg-slate-800 text-slate-300 px-2.5 py-1 rounded-md border border-slate-700">
+                {projects.length} Active
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+              {projects.map((proj) => {
+                const ingestUrl = `https://www.usehooklens.com/api/ingest/${proj.api_key}`;
+                return (
+                  <div key={proj.id} className="bg-slate-950/80 border border-slate-800 p-3.5 rounded-lg flex flex-col justify-between space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-white">{proj.name}</span>
+                      <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono">
+                        Active
+                      </span>
+                    </div>
+
+                    <div className="bg-slate-900 border border-slate-800/90 rounded px-2.5 py-1.5 flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-mono text-slate-300 truncate select-all">
+                        {ingestUrl}
+                      </span>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(ingestUrl);
+                          setCopiedKey(proj.api_key);
+                          setTimeout(() => setCopiedKey(null), 2000);
+                        }}
+                        className="text-[10px] font-medium text-emerald-400 hover:text-emerald-300 bg-emerald-950/40 border border-emerald-800/50 px-2 py-1 rounded transition-colors whitespace-nowrap"
+                      >
+                        {copiedKey === proj.api_key ? '✓ Copied' : 'Copy'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Live Incident Stream */}
         <div className="bg-slate-900/40 border border-slate-800/80 rounded-xl overflow-hidden shadow-sm">
