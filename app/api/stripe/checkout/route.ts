@@ -18,7 +18,7 @@ const PLANS: Record<string, { name: string; amount: number; description: string 
   },
   growth: {
     name: 'HookLens Growth',
-    amount: 2900, // $29.00 USD
+    amount: 2400, // $29.00 USD
     description: 'Up to 100,000 events/mo, Unlimited endpoints, Slack & Discord alerts, AI Root-Cause Analysis, 30 days log retention'
   },
   scale: {

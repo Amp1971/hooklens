@@ -527,7 +527,7 @@ export default function DashboardPage() {
                   <h4 className="text-base font-bold text-white">Growth</h4>
                   <p className="text-xs text-slate-400 mt-1">For growing startups & high-volume webhooks.</p>
                   <div className="mt-4 flex items-baseline gap-1">
-                    <span className="text-3xl font-extrabold text-white">$29</span>
+                    <span className="text-3xl font-extrabold text-white">$19</span>
                     <span className="text-xs text-slate-400">/month</span>
                   </div>
                   <ul className="mt-5 space-y-2.5 text-xs text-slate-300">
