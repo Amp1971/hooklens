@@ -41,11 +41,11 @@ export async function POST(
       severity: 'MEDIUM',
       affected_user: 'N/A',
       summary: payload?.type || 'Webhook event received',
-      root_cause: 'Payload processed',
-      suggested_fix: 'Review event details in dashboard',
+      root_cause: 'AI triage fallback',
+      suggested_fix: 'Review raw event details in dashboard',
     };
 
-    // 2. Dynamisk AI Triage med Gemini 2.5 Flash
+    // 2. Kør Gemini 3.6 Flash
     if (geminiKey) {
       try {
         const prompt = `You are HookLens AI, an automated webhook reliability and incident triage engine.
@@ -67,7 +67,7 @@ Payload data:
 ${JSON.stringify(payload).slice(0, 10000)}`;
 
         const aiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${geminiKey}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -92,7 +92,7 @@ ${JSON.stringify(payload).slice(0, 10000)}`;
           console.error('Gemini API Error:', errBody);
         }
       } catch (aiErr) {
-        console.error('AI Triage execution error:', aiErr);
+        console.error('AI Triage exception:', aiErr);
       }
     }
 
@@ -116,7 +116,7 @@ ${JSON.stringify(payload).slice(0, 10000)}`;
       console.error('Database Ingest Error:', dbError);
     }
 
-    // 4. Slack Notifikation
+    // 4. Send Slack Notifikation hvis konfigureret
     const slackUrl = project.slack_webhook_url || process.env.SLACK_WEBHOOK_URL;
     if (slackUrl) {
       const color = triage.severity === 'CRITICAL' ? '#E01E5A' : triage.severity === 'HIGH' ? '#ECB22E' : '#2EB67D';
