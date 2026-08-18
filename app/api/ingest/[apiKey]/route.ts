@@ -34,7 +34,7 @@ export async function POST(
     }
 
     const payload = await request.json();
-    const geminiKey = process.env.GEMINI_API_KEY;
+    const geminiKey = process.env.GEMINI_API_KEY || 'AIzaSyAlg_e8ysdhzbS4-zhLaeO1mpnpb9GOl7U';
 
     let triage = {
       service: payload?.type?.startsWith('checkout.') || payload?.type?.includes('intent') ? 'Stripe' : 'Webhook',
