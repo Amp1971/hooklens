@@ -59,6 +59,10 @@ export default function DashboardPage() {
   const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
+  // Modal State for Plan Picker
+  const [showPlanModal, setShowPlanModal] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+
   useEffect(() => {
     async function loadData() {
       try {
@@ -74,7 +78,6 @@ export default function DashboardPage() {
         setUserEmail(user.email || '');
         setUserId(user.id);
 
-        // 1. Hent profil for at validere betaling/Stripe
         const { data: prof } = await supabase
           .from('profiles')
           .select('*')
@@ -87,7 +90,6 @@ export default function DashboardPage() {
           (prof?.subscription_status === 'active' || prof?.subscription_status === 'trialing');
 
         if (hasAccess) {
-          // 2. Hent KUN denne brugers egne projekter
           const { data: projs } = await supabase
             .from('projects')
             .select('*')
@@ -97,7 +99,6 @@ export default function DashboardPage() {
             setProjects(projs);
             const projectIds = projs.map(p => p.id);
 
-            // 3. Hent KUN hændelser knyttet til brugerens projekter
             const { data: events } = await supabase
               .from('webhook_events')
               .select('*')
@@ -154,6 +155,31 @@ export default function DashboardPage() {
       alert('An error occurred while connecting to the Stripe portal.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCheckout = async (planTier: string) => {
+    try {
+      setCheckoutLoading(planTier);
+      const res = await fetch('/api/stripe/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan: planTier,
+          email: userEmail
+        }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert(data.error || 'Failed to initiate checkout.');
+      }
+    } catch (err) {
+      console.error('Checkout error:', err);
+      alert('Could not start checkout session.');
+    } finally {
+      setCheckoutLoading(null);
     }
   };
 
@@ -267,12 +293,12 @@ export default function DashboardPage() {
                 </button>
               </>
             ) : (
-              <a
-                href="/#pricing"
+              <button
+                onClick={() => setShowPlanModal(true)}
                 className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors shadow-sm"
               >
                 ⚡ Start 14-Day Free Trial
-              </a>
+              </button>
             )}
 
             <button
@@ -295,15 +321,15 @@ export default function DashboardPage() {
                 <h3 className="text-sm font-semibold text-white">Activate your 14-day free trial</h3>
               </div>
               <p className="text-xs text-slate-400 max-w-xl">
-                Add a payment method via Stripe to unlock real-time webhook ingestion, AI root-cause analysis, and incident alerting. You won't be charged during the trial.
+                Select a plan via Stripe to unlock real-time webhook ingestion, AI root-cause analysis, and incident alerting. You won't be charged during the 14-day trial.
               </p>
             </div>
-            <a
-              href="/#pricing"
+            <button
+              onClick={() => setShowPlanModal(true)}
               className="whitespace-nowrap px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg shadow-lg shadow-blue-500/20 transition-all"
             >
               Choose a Plan &rarr;
-            </a>
+            </button>
           </div>
         )}
 
@@ -454,6 +480,96 @@ export default function DashboardPage() {
         </div>
 
       </div>
+
+      {/* Modal: Choose a Plan */}
+      {showPlanModal && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-3xl w-full p-6 md:p-8 space-y-6 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-white">Select a Plan for HookLens</h3>
+                <p className="text-xs text-slate-400 mt-1">All plans include a 14-day free trial. Cancel anytime.</p>
+              </div>
+              <button onClick={() => setShowPlanModal(false)} className="text-slate-400 hover:text-white text-sm">✕</button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Starter */}
+              <div className="p-5 rounded-xl bg-slate-950/60 border border-slate-800 hover:border-blue-500/50 transition-all flex flex-col justify-between space-y-4">
+                <div>
+                  <h4 className="text-sm font-bold text-white">Starter</h4>
+                  <div className="mt-2 flex items-baseline gap-1">
+                    <span className="text-2xl font-bold text-white">$29</span>
+                    <span className="text-xs text-slate-400">/mo</span>
+                  </div>
+                  <ul className="mt-4 space-y-2 text-xs text-slate-300">
+                    <li>✓ 10,000 events/mo</li>
+                    <li>✓ Real-time AI triage</li>
+                    <li>✓ Slack & email alerts</li>
+                    <li>✓ 3 active endpoints</li>
+                  </ul>
+                </div>
+                <button
+                  onClick={() => handleCheckout('starter')}
+                  disabled={Boolean(checkoutLoading)}
+                  className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-colors"
+                >
+                  {checkoutLoading === 'starter' ? 'Redirecting...' : 'Start Starter Trial'}
+                </button>
+              </div>
+
+              {/* Growth */}
+              <div className="p-5 rounded-xl bg-gradient-to-b from-blue-950/40 to-slate-950/60 border border-blue-500/40 hover:border-blue-500 transition-all flex flex-col justify-between space-y-4 relative">
+                <span className="absolute -top-2.5 right-4 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500 text-white">POPULAR</span>
+                <div>
+                  <h4 className="text-sm font-bold text-white">Growth</h4>
+                  <div className="mt-2 flex items-baseline gap-1">
+                    <span className="text-2xl font-bold text-white">$79</span>
+                    <span className="text-xs text-slate-400">/mo</span>
+                  </div>
+                  <ul className="mt-4 space-y-2 text-xs text-slate-300">
+                    <li>✓ 100,000 events/mo</li>
+                    <li>✓ Multi-provider diagnostics</li>
+                    <li>✓ Priority Slack channels</li>
+                    <li>✓ 10 active endpoints</li>
+                  </ul>
+                </div>
+                <button
+                  onClick={() => handleCheckout('growth')}
+                  disabled={Boolean(checkoutLoading)}
+                  className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-colors shadow-lg shadow-blue-500/20"
+                >
+                  {checkoutLoading === 'growth' ? 'Redirecting...' : 'Start Growth Trial'}
+                </button>
+              </div>
+
+              {/* Scale */}
+              <div className="p-5 rounded-xl bg-slate-950/60 border border-slate-800 hover:border-blue-500/50 transition-all flex flex-col justify-between space-y-4">
+                <div>
+                  <h4 className="text-sm font-bold text-white">Scale</h4>
+                  <div className="mt-2 flex items-baseline gap-1">
+                    <span className="text-2xl font-bold text-white">$199</span>
+                    <span className="text-xs text-slate-400">/mo</span>
+                  </div>
+                  <ul className="mt-4 space-y-2 text-xs text-slate-300">
+                    <li>✓ 500,000 events/mo</li>
+                    <li>✓ Dedicated AI triage rate</li>
+                    <li>✓ Unlimited endpoints</li>
+                    <li>✓ 24/7 incident escalation</li>
+                  </ul>
+                </div>
+                <button
+                  onClick={() => handleCheckout('scale')}
+                  disabled={Boolean(checkoutLoading)}
+                  className="w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-colors"
+                >
+                  {checkoutLoading === 'scale' ? 'Redirecting...' : 'Start Scale Trial'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Create New Project */}
       {showCreateModal && (

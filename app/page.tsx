@@ -19,9 +19,7 @@ export default function LandingPage() {
     // 2. Tjek om brugeren allerede er logget ind
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        router.push('/dashboard');
-      }
+      // User is logged in - allow browsing landing page
     };
     checkSession();
   }, [router]);
