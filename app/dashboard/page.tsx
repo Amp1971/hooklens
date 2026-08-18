@@ -28,10 +28,19 @@ interface Project {
   api_key: string;
 }
 
+interface UserProfile {
+  id: string;
+  email: string;
+  plan_tier?: string;
+  subscription_status?: string;
+  stripe_customer_id?: string;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [userEmail, setUserEmail] = useState<string>('');
   const [userId, setUserId] = useState<string | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
 
@@ -65,19 +74,44 @@ export default function DashboardPage() {
         setUserEmail(user.email || '');
         setUserId(user.id);
 
-        const { data: projs } = await supabase
-          .from('projects')
+        // 1. Hent profil for at validere betaling/Stripe
+        const { data: prof } = await supabase
+          .from('profiles')
           .select('*')
-          .eq('user_id', user.id);
-        if (projs) setProjects(projs);
+          .eq('id', user.id)
+          .maybeSingle();
 
-        const { data: events } = await supabase
-          .from('webhook_events')
-          .select('*')
-          .order('created_at', { ascending: false });
+        setProfile(prof);
 
-        if (events) {
-          setIncidents(events);
+        const hasAccess = Boolean(prof?.stripe_customer_id) && 
+          (prof?.subscription_status === 'active' || prof?.subscription_status === 'trialing');
+
+        if (hasAccess) {
+          // 2. Hent KUN denne brugers egne projekter
+          const { data: projs } = await supabase
+            .from('projects')
+            .select('*')
+            .eq('user_id', user.id);
+          
+          if (projs && projs.length > 0) {
+            setProjects(projs);
+            const projectIds = projs.map(p => p.id);
+
+            // 3. Hent KUN hændelser knyttet til brugerens projekter
+            const { data: events } = await supabase
+              .from('webhook_events')
+              .select('*')
+              .in('project_id', projectIds)
+              .order('created_at', { ascending: false });
+
+            if (events) setIncidents(events);
+          } else {
+            setProjects([]);
+            setIncidents([]);
+          }
+        } else {
+          setProjects([]);
+          setIncidents([]);
         }
       } catch (e) {
         console.error('Error loading dashboard data:', e);
@@ -87,6 +121,9 @@ export default function DashboardPage() {
     }
     loadData();
   }, [router]);
+
+  const hasActiveAccess = Boolean(profile?.stripe_customer_id) && 
+    (profile?.subscription_status === 'active' || profile?.subscription_status === 'trialing');
 
   const handleSignOut = async () => {
     try {
@@ -122,7 +159,7 @@ export default function DashboardPage() {
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!projectName.trim() || !userId) return;
+    if (!projectName.trim() || !userId || !hasActiveAccess) return;
 
     try {
       setCreating(true);
@@ -144,7 +181,6 @@ export default function DashboardPage() {
     }
   };
 
-  // Filter Logic
   const filteredIncidents = useMemo(() => {
     return incidents.filter((inc) => {
       const matchesSearch =
@@ -166,11 +202,10 @@ export default function DashboardPage() {
     });
   }, [incidents, searchQuery, selectedProvider, selectedSeverity]);
 
-  // Metrics calculation
   const totalIncidents = incidents.length;
   const criticalAlerts = incidents.filter(i => i.severity?.toUpperCase() === 'CRITICAL').length;
   const timeSavedHours = (totalIncidents * 0.5).toFixed(1);
-  const activeEndpoints = projects.length > 0 ? projects.length : 1;
+  const activeEndpoints = projects.length;
 
   const getSeverityBadge = (sev: string) => {
     const s = sev?.toUpperCase();
@@ -189,6 +224,8 @@ export default function DashboardPage() {
     return 'bg-slate-500/10 text-slate-400 border-slate-500/20';
   };
 
+  const planDisplayName = (profile?.plan_tier || 'starter').toUpperCase();
+
   return (
     <div className="min-h-screen bg-[#070b14] text-slate-100 p-6 md:p-10 font-sans">
       <div className="max-w-6xl mx-auto space-y-8">
@@ -197,7 +234,7 @@ export default function DashboardPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/80 pb-6">
           <div>
             <div className="flex items-center gap-3">
-              <span className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span className={`w-3 h-3 rounded-full ${hasActiveAccess ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
               <h1 className="text-2xl font-bold tracking-tight text-white">HookLens</h1>
               <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">Operations Hub</span>
             </div>
@@ -207,27 +244,36 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <div className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-300">
-              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-              <span className="font-semibold text-white uppercase tracking-wider">Plan: Starter</span>
-              <span className="text-slate-500">•</span>
-              <span>10,000 events/mo</span>
-            </div>
+            {hasActiveAccess ? (
+              <>
+                <div className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-300">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                  <span className="font-semibold text-white uppercase tracking-wider">Plan: {planDisplayName}</span>
+                </div>
 
-            <button
-              onClick={handleManageSubscription}
-              disabled={loading}
-              className="px-4 py-2 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors shadow-sm flex items-center gap-1.5"
-            >
-              {loading ? 'Opening...' : 'Manage Subscription ⚙️'}
-            </button>
+                <button
+                  onClick={handleManageSubscription}
+                  disabled={loading}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors shadow-sm flex items-center gap-1.5"
+                >
+                  {loading ? 'Opening...' : 'Manage Subscription ⚙️'}
+                </button>
 
-            <button
-              onClick={() => { setShowCreateModal(true); setCreatedKey(null); setProjectName(''); }}
-              className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors shadow-sm"
-            >
-              + Create New Project
-            </button>
+                <button
+                  onClick={() => { setShowCreateModal(true); setCreatedKey(null); setProjectName(''); }}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors shadow-sm"
+                >
+                  + Create New Project
+                </button>
+              </>
+            ) : (
+              <a
+                href="/#pricing"
+                className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors shadow-sm"
+              >
+                ⚡ Start 14-Day Free Trial
+              </a>
+            )}
 
             <button
               onClick={handleSignOut}
@@ -237,6 +283,29 @@ export default function DashboardPage() {
             </button>
           </div>
         </div>
+
+        {/* Paywall Banner for un-subscribed users */}
+        {!fetching && !hasActiveAccess && (
+          <div className="p-6 rounded-2xl bg-gradient-to-r from-blue-900/30 via-slate-900/50 to-indigo-900/30 border border-blue-500/30 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase">
+                  Subscription Required
+                </span>
+                <h3 className="text-sm font-semibold text-white">Activate your 14-day free trial</h3>
+              </div>
+              <p className="text-xs text-slate-400 max-w-xl">
+                Add a payment method via Stripe to unlock real-time webhook ingestion, AI root-cause analysis, and incident alerting. You won't be charged during the trial.
+              </p>
+            </div>
+            <a
+              href="/#pricing"
+              className="whitespace-nowrap px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg shadow-lg shadow-blue-500/20 transition-all"
+            >
+              Choose a Plan &rarr;
+            </a>
+          </div>
+        )}
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -262,7 +331,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Live Incident Stream Header & Filters */}
+        {/* Live Incident Stream */}
         <div className="bg-slate-900/40 border border-slate-800/80 rounded-xl overflow-hidden shadow-sm">
           <div className="p-4 border-b border-slate-800/80 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -275,7 +344,7 @@ export default function DashboardPage() {
               </span>
             </div>
 
-            {/* Search and Filters */}
+            {/* Filters */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-1">
               <div className="relative flex-1">
                 <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500 text-xs pointer-events-none">
@@ -330,10 +399,14 @@ export default function DashboardPage() {
             <div className="p-12 text-center text-xs text-slate-400">Loading incidents...</div>
           ) : filteredIncidents.length === 0 ? (
             <div className="p-12 text-center space-y-3">
-              <div className="inline-flex p-3 rounded-full bg-slate-800/50 text-slate-400">🔍</div>
-              <h3 className="text-sm font-semibold text-white">No incidents match your criteria</h3>
-              <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                Try resetting your search query or adjusting your provider and severity filters.
+              <div className="inline-flex p-3 rounded-full bg-slate-800/50 text-slate-400">⚡</div>
+              <h3 className="text-sm font-semibold text-white">
+                {!hasActiveAccess ? 'No active subscription connected' : 'No incidents recorded yet'}
+              </h3>
+              <p className="text-xs text-slate-400 max-w-md mx-auto">
+                {!hasActiveAccess 
+                  ? 'Subscribe to a plan above to generate webhook endpoints and start monitoring.'
+                  : 'Webhooks sent to your project endpoints will be analyzed in real-time.'}
               </p>
             </div>
           ) : (
@@ -424,7 +497,7 @@ export default function DashboardPage() {
                     Ingestion Webhook URL
                   </label>
                   <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-lg p-2.5 font-mono text-xs text-slate-200 break-all">
-                    https://www.usehooklens.com/api/ingest/{createdKey}
+                    https://www.usehooklens.com/api/ingest/${createdKey}
                   </div>
                 </div>
                 <button
