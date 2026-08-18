@@ -34,18 +34,18 @@ export async function POST(
     }
 
     const payload = await request.json();
-    const geminiKey = process.env.GEMINI_API_KEY || 'AIzaSyAlg_e8ysdhzbS4-zhLaeO1mpnpb9GOl7U';
+    const geminiKey = process.env.GEMINI_API_KEY;
 
     let triage = {
       service: payload?.type?.startsWith('checkout.') || payload?.type?.includes('intent') ? 'Stripe' : 'Webhook',
       severity: 'MEDIUM',
       affected_user: payload?.data?.object?.customer_email || payload?.data?.object?.customer || 'N/A',
       summary: payload?.type || 'Webhook event received',
-      root_cause: 'AI Triage initialized',
-      suggested_fix: 'Review raw payload details',
+      root_cause: 'Payload processed',
+      suggested_fix: 'Review raw payload details in dashboard',
     };
 
-    // 2. Kør Gemini AI Triage
+    // 2. Kør Gemini 3.6 Flash
     if (geminiKey) {
       try {
         const prompt = `You are HookLens AI, an automated webhook reliability and incident triage engine.
@@ -66,20 +66,23 @@ Respond ONLY with a valid JSON object matching this schema:
 Payload data:
 ${JSON.stringify(payload).slice(0, 10000)}`;
 
-        const aiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${geminiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: {
-                responseMimeType: 'application/json',
-                temperature: 0.2,
-              },
-            }),
-          }
-        );
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${geminiKey}`;
+
+        const aiRes = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': geminiKey,
+            'Authorization': `Bearer ${geminiKey}`,
+          },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              responseMimeType: 'application/json',
+              temperature: 0.2,
+            },
+          }),
+        });
 
         if (aiRes.ok) {
           const aiData = await aiRes.json();
@@ -101,7 +104,7 @@ ${JSON.stringify(payload).slice(0, 10000)}`;
       }
     } else {
       triage.root_cause = 'Missing GEMINI_API_KEY';
-      triage.suggested_fix = 'Define GEMINI_API_KEY in environment variables';
+      triage.suggested_fix = 'Configure GEMINI_API_KEY in Vercel Environment Variables';
     }
 
     // 3. Gem i Supabase
