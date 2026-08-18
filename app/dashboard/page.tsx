@@ -86,8 +86,8 @@ export default function DashboardPage() {
 
         setProfile(prof);
 
-        const hasAccess = Boolean(prof?.stripe_customer_id) && 
-          (prof?.subscription_status === 'active' || prof?.subscription_status === 'trialing');
+        const status = (prof?.subscription_status || '').toLowerCase();
+        const hasAccess = Boolean(prof?.stripe_customer_id) && (status === 'active' || status === 'trialing' || status === 'starter' || status === 'growth' || status === 'scale');
 
         if (hasAccess) {
           const { data: projs } = await supabase
@@ -123,8 +123,8 @@ export default function DashboardPage() {
     loadData();
   }, [router]);
 
-  const hasActiveAccess = Boolean(profile?.stripe_customer_id) && 
-    (profile?.subscription_status === 'active' || profile?.subscription_status === 'trialing');
+  const profStatus = (profile?.subscription_status || '').toLowerCase();
+  const hasActiveAccess = Boolean(profile?.stripe_customer_id) && (profStatus === 'active' || profStatus === 'trialing' || profStatus === 'starter' || profStatus === 'growth' || profStatus === 'scale');
 
   const handleSignOut = async () => {
     try {

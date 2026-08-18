@@ -64,7 +64,7 @@ export async function POST(req: Request) {
                 id: user.id,
                 email: customerEmail,
                 plan_tier: tier,
-                subscription_status: 'active',
+                subscription_status: 'trialing',
                 stripe_customer_id: customerId,
                 stripe_subscription_id: subscriptionId,
                 updated_at: new Date().toISOString(),
@@ -78,14 +78,20 @@ export async function POST(req: Request) {
       case 'customer.subscription.created': {
         const subscription = event.data.object as Stripe.Subscription;
         const customerId = subscription.customer as string;
-        const status = subscription.status;
+        const status = subscription.status; // 'active', 'trialing', 'canceled' osv.
+        const tier = subscription.metadata?.plan_tier;
+
+        const updateData: any = {
+          subscription_status: status,
+          updated_at: new Date().toISOString(),
+        };
+        if (tier) {
+          updateData.plan_tier = tier;
+        }
 
         await supabaseAdmin
           .from('profiles')
-          .update({
-            subscription_status: status,
-            updated_at: new Date().toISOString(),
-          })
+          .update(updateData)
           .eq('stripe_customer_id', customerId);
         break;
       }
@@ -98,6 +104,7 @@ export async function POST(req: Request) {
           .from('profiles')
           .update({
             subscription_status: 'canceled',
+            plan_tier: 'none',
             updated_at: new Date().toISOString(),
           })
           .eq('stripe_customer_id', customerId);
