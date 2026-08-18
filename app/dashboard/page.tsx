@@ -484,86 +484,94 @@ export default function DashboardPage() {
       {/* Modal: Choose a Plan */}
       {showPlanModal && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-3xl w-full p-6 md:p-8 space-y-6 shadow-2xl">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-4xl w-full p-6 md:p-8 space-y-6 shadow-2xl">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-bold text-white">Select a Plan for HookLens</h3>
-                <p className="text-xs text-slate-400 mt-1">All plans include a 14-day free trial. Cancel anytime.</p>
+                <h3 className="text-xl font-bold text-white">Simple, transparent pricing</h3>
+                <p className="text-xs text-slate-400 mt-1">Choose the plan that fits your webhook volume and infrastructure. All plans include a 14-day free trial.</p>
               </div>
               <button onClick={() => setShowPlanModal(false)} className="text-slate-400 hover:text-white text-sm">✕</button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
               {/* Starter */}
-              <div className="p-5 rounded-xl bg-slate-950/60 border border-slate-800 hover:border-blue-500/50 transition-all flex flex-col justify-between space-y-4">
+              <div className="p-6 rounded-2xl bg-slate-950/60 border border-slate-800 hover:border-blue-500/40 transition-all flex flex-col justify-between space-y-5">
                 <div>
-                  <h4 className="text-sm font-bold text-white">Starter</h4>
-                  <div className="mt-2 flex items-baseline gap-1">
-                    <span className="text-2xl font-bold text-white">$29</span>
-                    <span className="text-xs text-slate-400">/mo</span>
+                  <h4 className="text-base font-bold text-white">Starter</h4>
+                  <p className="text-xs text-slate-400 mt-1">For side projects and small webhooks.</p>
+                  <div className="mt-4 flex items-baseline gap-1">
+                    <span className="text-3xl font-extrabold text-white">$19</span>
+                    <span className="text-xs text-slate-400">/month</span>
                   </div>
-                  <ul className="mt-4 space-y-2 text-xs text-slate-300">
-                    <li>✓ 10,000 events/mo</li>
-                    <li>✓ Real-time AI triage</li>
-                    <li>✓ Slack & email alerts</li>
-                    <li>✓ 3 active endpoints</li>
+                  <ul className="mt-5 space-y-2.5 text-xs text-slate-300">
+                    <li className="flex items-center gap-2 text-slate-200">✓ 14-day free trial</li>
+                    <li className="flex items-center gap-2">✓ Up to 10,000 events/mo</li>
+                    <li className="flex items-center gap-2">✓ 3 active endpoints</li>
+                    <li className="flex items-center gap-2">✓ Instant Slack alerts</li>
+                    <li className="flex items-center gap-2">✓ 7 days log retention</li>
                   </ul>
                 </div>
                 <button
                   onClick={() => handleCheckout('starter')}
                   disabled={Boolean(checkoutLoading)}
-                  className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-colors"
+                  className="w-full py-2.5 px-3 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-colors"
                 >
-                  {checkoutLoading === 'starter' ? 'Redirecting...' : 'Start Starter Trial'}
+                  {checkoutLoading === 'starter' ? 'Redirecting...' : 'Start 14-Day Free Trial'}
                 </button>
               </div>
 
               {/* Growth */}
-              <div className="p-5 rounded-xl bg-gradient-to-b from-blue-950/40 to-slate-950/60 border border-blue-500/40 hover:border-blue-500 transition-all flex flex-col justify-between space-y-4 relative">
-                <span className="absolute -top-2.5 right-4 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500 text-white">POPULAR</span>
+              <div className="p-6 rounded-2xl bg-gradient-to-b from-blue-950/30 to-slate-950/60 border-2 border-blue-500 hover:border-blue-400 transition-all flex flex-col justify-between space-y-5 relative shadow-xl shadow-blue-500/10">
+                <span className="absolute -top-3 right-6 px-3 py-0.5 rounded-full text-[10px] font-bold bg-blue-600 text-white tracking-wider uppercase">MOST POPULAR</span>
                 <div>
-                  <h4 className="text-sm font-bold text-white">Growth</h4>
-                  <div className="mt-2 flex items-baseline gap-1">
-                    <span className="text-2xl font-bold text-white">$79</span>
-                    <span className="text-xs text-slate-400">/mo</span>
+                  <h4 className="text-base font-bold text-white">Growth</h4>
+                  <p className="text-xs text-slate-400 mt-1">For growing startups & high-volume webhooks.</p>
+                  <div className="mt-4 flex items-baseline gap-1">
+                    <span className="text-3xl font-extrabold text-white">$29</span>
+                    <span className="text-xs text-slate-400">/month</span>
                   </div>
-                  <ul className="mt-4 space-y-2 text-xs text-slate-300">
-                    <li>✓ 100,000 events/mo</li>
-                    <li>✓ Multi-provider diagnostics</li>
-                    <li>✓ Priority Slack channels</li>
-                    <li>✓ 10 active endpoints</li>
+                  <ul className="mt-5 space-y-2.5 text-xs text-slate-300">
+                    <li className="flex items-center gap-2 text-slate-200">✓ 14-day free trial</li>
+                    <li className="flex items-center gap-2">✓ Up to 100,000 events/mo</li>
+                    <li className="flex items-center gap-2">✓ Unlimited endpoints</li>
+                    <li className="flex items-center gap-2">✓ Slack & Discord alerts</li>
+                    <li className="flex items-center gap-2">✓ AI Root-Cause Analysis</li>
+                    <li className="flex items-center gap-2">✓ 30 days log retention</li>
                   </ul>
                 </div>
                 <button
                   onClick={() => handleCheckout('growth')}
                   disabled={Boolean(checkoutLoading)}
-                  className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-colors shadow-lg shadow-blue-500/20"
+                  className="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-colors shadow-lg shadow-blue-500/25"
                 >
-                  {checkoutLoading === 'growth' ? 'Redirecting...' : 'Start Growth Trial'}
+                  {checkoutLoading === 'growth' ? 'Redirecting...' : 'Start 14-Day Free Trial'}
                 </button>
               </div>
 
               {/* Scale */}
-              <div className="p-5 rounded-xl bg-slate-950/60 border border-slate-800 hover:border-blue-500/50 transition-all flex flex-col justify-between space-y-4">
+              <div className="p-6 rounded-2xl bg-slate-950/60 border border-slate-800 hover:border-blue-500/40 transition-all flex flex-col justify-between space-y-5">
                 <div>
-                  <h4 className="text-sm font-bold text-white">Scale</h4>
-                  <div className="mt-2 flex items-baseline gap-1">
-                    <span className="text-2xl font-bold text-white">$199</span>
-                    <span className="text-xs text-slate-400">/mo</span>
+                  <h4 className="text-base font-bold text-white">Scale</h4>
+                  <p className="text-xs text-slate-400 mt-1">For enterprise scale & critical operations.</p>
+                  <div className="mt-4 flex items-baseline gap-1">
+                    <span className="text-3xl font-extrabold text-white">$49</span>
+                    <span className="text-xs text-slate-400">/month</span>
                   </div>
-                  <ul className="mt-4 space-y-2 text-xs text-slate-300">
-                    <li>✓ 500,000 events/mo</li>
-                    <li>✓ Dedicated AI triage rate</li>
-                    <li>✓ Unlimited endpoints</li>
-                    <li>✓ 24/7 incident escalation</li>
+                  <ul className="mt-5 space-y-2.5 text-xs text-slate-300">
+                    <li className="flex items-center gap-2 text-slate-200">✓ 14-day free trial</li>
+                    <li className="flex items-center gap-2">✓ Unlimited events</li>
+                    <li className="flex items-center gap-2">✓ Dedicated webhook ingest latency</li>
+                    <li className="flex items-center gap-2">✓ Slack, Discord & Webhook dispatch</li>
+                    <li className="flex items-center gap-2">✓ 90 days log retention</li>
+                    <li className="flex items-center gap-2">✓ Priority SLA support</li>
                   </ul>
                 </div>
                 <button
                   onClick={() => handleCheckout('scale')}
                   disabled={Boolean(checkoutLoading)}
-                  className="w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-colors"
+                  className="w-full py-2.5 px-3 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-colors"
                 >
-                  {checkoutLoading === 'scale' ? 'Redirecting...' : 'Start Scale Trial'}
+                  {checkoutLoading === 'scale' ? 'Redirecting...' : 'Start 14-Day Free Trial'}
                 </button>
               </div>
             </div>
