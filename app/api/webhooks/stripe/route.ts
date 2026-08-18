@@ -46,11 +46,9 @@ export async function POST(req: Request) {
         const tier = session.metadata?.plan_tier || 'starter';
 
         if (customerEmail) {
-          // 1. Tjek om brugeren findes i Supabase Auth
           const { data: userData } = await supabaseAdmin.auth.admin.listUsers();
           let user = userData?.users?.find(u => u.email?.toLowerCase() === customerEmail);
 
-          // Hvis brugeren IKKE findes endnu (købte direkte fra landing page):
           if (!user) {
             const { data: newUser } = await supabaseAdmin.auth.admin.createUser({
               email: customerEmail,
@@ -60,7 +58,6 @@ export async function POST(req: Request) {
           }
 
           if (user) {
-            // Upsert profilen med det korrekte plan_tier og Stripe IDs
             await supabaseAdmin
               .from('profiles')
               .upsert({
@@ -86,7 +83,8 @@ export async function POST(req: Request) {
         await supabaseAdmin
           .from('profiles')
           .update({
-            subscription_status: status === 'trialing' ? 'active' : status,
+            subscription_status: status,
+            updated_at: new Date().toISOString(),
           })
           .eq('stripe_customer_id', customerId);
         break;
@@ -99,8 +97,8 @@ export async function POST(req: Request) {
         await supabaseAdmin
           .from('profiles')
           .update({
-            plan_tier: 'trial',
             subscription_status: 'canceled',
+            updated_at: new Date().toISOString(),
           })
           .eq('stripe_customer_id', customerId);
         break;
