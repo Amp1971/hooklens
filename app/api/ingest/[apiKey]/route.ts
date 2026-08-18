@@ -73,7 +73,6 @@ ${JSON.stringify(payload).slice(0, 10000)}`;
           headers: {
             'Content-Type': 'application/json',
             'x-goog-api-key': geminiKey,
-            'Authorization': `Bearer ${geminiKey}`,
           },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
