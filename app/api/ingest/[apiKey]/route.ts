@@ -9,6 +9,51 @@ function getSupabaseAdmin() {
   return createClient(url, key);
 }
 
+// Intelligent regel-baseret triage til øjeblikkelig analyse
+function parseStripeEvent(type: string, dataObj: any) {
+  switch (type) {
+    case 'checkout.session.expired':
+      return {
+        service: 'Stripe',
+        severity: 'HIGH',
+        affected_user: dataObj?.customer_details?.email || dataObj?.customer || dataObj?.id || 'N/A',
+        summary: 'Checkout session expired without payment completion',
+        root_cause: 'Customer abandoned the checkout flow before completing payment within the session window.',
+        suggested_fix: 'Send an automated cart abandonment recovery email with a fresh checkout link.',
+      };
+    case 'payment_intent.payment_failed':
+    case 'charge.failed':
+      return {
+        service: 'Stripe',
+        severity: 'CRITICAL',
+        affected_user: dataObj?.customer || dataObj?.billing_details?.email || 'N/A',
+        summary: `Payment failed: ${dataObj?.last_payment_error?.message || dataObj?.failure_message || 'Declined'}`,
+        root_cause: dataObj?.last_payment_error?.code || dataObj?.failure_code || 'card_declined',
+        suggested_fix: 'Notify customer to update payment method or retry with 3D Secure verification.',
+      };
+    case 'customer.subscription.deleted':
+      return {
+        service: 'Stripe',
+        severity: 'HIGH',
+        affected_user: dataObj?.customer || 'N/A',
+        summary: 'Customer subscription canceled',
+        root_cause: 'Subscription reached period end or was canceled via billing portal.',
+        suggested_fix: 'Trigger offboarding survey and churn mitigation outreach.',
+      };
+    case 'invoice.payment_failed':
+      return {
+        service: 'Stripe',
+        severity: 'CRITICAL',
+        affected_user: dataObj?.customer_email || dataObj?.customer || 'N/A',
+        summary: 'Recurring invoice payment failed',
+        root_cause: dataObj?.last_payment_error?.message || 'Invoice charge failure',
+        suggested_fix: 'Initiate Smart Retries / Dunning sequence before revoking access.',
+      };
+    default:
+      return null;
+  }
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ apiKey: string }> | { apiKey: string } }
@@ -19,7 +64,7 @@ export async function POST(
 
     const supabaseAdmin = getSupabaseAdmin();
 
-    // 1. Verificer projektet ud fra API-nøglen
+    // 1. Verificer projekt
     const { data: project, error: projectError } = await supabaseAdmin
       .from('projects')
       .select('*')
@@ -34,35 +79,35 @@ export async function POST(
     }
 
     const payload = await request.json();
+    const eventType = payload?.type || 'webhook.event';
+    const dataObj = payload?.data?.object || payload;
 
-    // 2. Kør AI Triage med direkte Gemini REST API
-    let triage = {
-      service: payload?.type?.startsWith('checkout.') ? 'Stripe' : 'Generic',
+    // 2. Kør regel-baseret analyse først
+    let triage = parseStripeEvent(eventType, dataObj) || {
+      service: eventType.includes('.') ? 'Stripe' : 'Generic',
       severity: 'MEDIUM',
-      affected_user: 'N/A',
-      summary: payload?.type || 'Webhook event received',
-      root_cause: 'Payload event triggered',
-      suggested_fix: 'Review event details in dashboard',
+      affected_user: dataObj?.customer_email || dataObj?.email || dataObj?.customer || 'N/A',
+      summary: `Webhook event: ${eventType}`,
+      root_cause: 'Webhook delivered to ingest endpoint',
+      suggested_fix: 'Inspect payload details',
     };
 
+    // 3. Hvis Gemini AI er tilgængelig og hændelsen er ukendt, kør LLM triage
     const geminiKey = process.env.GEMINI_API_KEY;
-    if (geminiKey) {
+    if (geminiKey && (!triage || triage.severity === 'MEDIUM')) {
       try {
-        const prompt = `You are HookLens AI, an expert webhook monitoring engine.
-Analyze this webhook payload. Detect service/source (e.g. Stripe, Shopify, GitHub), severity level, affected customer email/ID, root cause, and actionable fix.
-
-Payload:
-${JSON.stringify(payload, null, 2)}
-
-Respond ONLY with a valid JSON object matching this schema:
+        const prompt = `You are HookLens AI. Analyze this webhook payload JSON and provide diagnosis.
+Respond ONLY with JSON matching:
 {
-  "service": "Stripe" | "Shopify" | "PayPal" | "WooCommerce" | "Other",
+  "service": "Service name",
   "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
-  "affected_user": "User email or customer ID or 'N/A'",
-  "summary": "Short descriptive summary",
-  "root_cause": "Exact technical root cause",
-  "suggested_fix": "Actionable developer guidance to resolve or mitigate"
-}`;
+  "affected_user": "email or user ID or N/A",
+  "summary": "Clear summary in English",
+  "root_cause": "Technical root cause in English",
+  "suggested_fix": "Actionable developer fix in English"
+}
+Payload:
+${JSON.stringify(payload).slice(0, 4000)}`;
 
         const aiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
           method: 'POST',
@@ -79,24 +124,21 @@ Respond ONLY with a valid JSON object matching this schema:
           if (rawText) {
             triage = JSON.parse(rawText);
           }
-        } else {
-          const errBody = await aiRes.text();
-          console.error('Gemini API Error Response:', errBody);
         }
-      } catch (aiErr) {
-        console.error('AI Triage exception:', aiErr);
+      } catch (err) {
+        console.error('Gemini call error:', err);
       }
     }
 
-    // 3. Gem hændelsen i Supabase
+    // 4. Gem hændelsen i Supabase
     const { data: savedEvent, error: dbError } = await supabaseAdmin
       .from('webhook_events')
       .insert({
         project_id: project.id,
         service: triage.service || 'Stripe',
-        severity: triage.severity || 'MEDIUM',
+        severity: triage.severity || 'HIGH',
         affected_user: triage.affected_user || 'N/A',
-        summary: triage.summary || 'Webhook event received',
+        summary: triage.summary || eventType,
         root_cause: triage.root_cause || '',
         suggested_fix: triage.suggested_fix || '',
         raw_payload: payload,
@@ -106,54 +148,6 @@ Respond ONLY with a valid JSON object matching this schema:
 
     if (dbError) {
       console.error('Database Ingest Error:', dbError);
-    }
-
-    // 4. Send Slack Notifikation
-    const slackUrl = project.slack_webhook_url || process.env.SLACK_WEBHOOK_URL;
-    if (slackUrl) {
-      const color = triage.severity === 'CRITICAL' ? '#E01E5A' : triage.severity === 'HIGH' ? '#ECB22E' : '#2EB67D';
-      const slackMessage = {
-        attachments: [
-          {
-            color: color,
-            blocks: [
-              {
-                type: 'header',
-                text: {
-                  type: 'plain_text',
-                  text: `🚨 [${triage.severity}] ${triage.service} Incident: ${project.name}`,
-                  emoji: true,
-                },
-              },
-              {
-                type: 'section',
-                fields: [
-                  { type: 'mrkdwn', text: `*Affected User:*\n\`${triage.affected_user}\`` },
-                  { type: 'mrkdwn', text: `*Project:*\n${project.name}` },
-                ],
-              },
-              {
-                type: 'section',
-                text: { type: 'mrkdwn', text: `*Summary:*\n${triage.summary}` },
-              },
-              {
-                type: 'section',
-                text: { type: 'mrkdwn', text: `*Root Cause:*\n${triage.root_cause}` },
-              },
-              {
-                type: 'section',
-                text: { type: 'mrkdwn', text: `*Suggested Fix:*\n${triage.suggested_fix}` },
-              },
-            ],
-          },
-        ],
-      };
-
-      await fetch(slackUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(slackMessage),
-      }).catch((err) => console.error('Slack Send Error:', err));
     }
 
     return NextResponse.json({
