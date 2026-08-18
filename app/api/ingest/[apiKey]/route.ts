@@ -39,13 +39,13 @@ export async function POST(
     let triage = {
       service: payload?.type?.startsWith('checkout.') || payload?.type?.includes('intent') ? 'Stripe' : 'Webhook',
       severity: 'MEDIUM',
-      affected_user: 'N/A',
+      affected_user: payload?.data?.object?.customer_email || payload?.data?.object?.customer || 'N/A',
       summary: payload?.type || 'Webhook event received',
-      root_cause: 'AI triage fallback',
-      suggested_fix: 'Review raw event details in dashboard',
+      root_cause: 'AI Triage initialized',
+      suggested_fix: 'Review raw payload details',
     };
 
-    // 2. Kør Gemini 3.6 Flash
+    // 2. Kør Gemini AI Triage
     if (geminiKey) {
       try {
         const prompt = `You are HookLens AI, an automated webhook reliability and incident triage engine.
@@ -86,17 +86,25 @@ ${JSON.stringify(payload).slice(0, 10000)}`;
           const rawText = aiData?.candidates?.[0]?.content?.parts?.[0]?.text;
           if (rawText) {
             triage = JSON.parse(rawText);
+          } else {
+            triage.root_cause = 'Gemini returned empty candidate text';
+            triage.suggested_fix = JSON.stringify(aiData).slice(0, 150);
           }
         } else {
           const errBody = await aiRes.text();
-          console.error('Gemini API Error:', errBody);
+          triage.root_cause = `Gemini HTTP ${aiRes.status} Error`;
+          triage.suggested_fix = errBody.slice(0, 150);
         }
-      } catch (aiErr) {
-        console.error('AI Triage exception:', aiErr);
+      } catch (aiErr: any) {
+        triage.root_cause = 'AI execution exception';
+        triage.suggested_fix = (aiErr.message || 'Unknown network error').slice(0, 150);
       }
+    } else {
+      triage.root_cause = 'Missing GEMINI_API_KEY';
+      triage.suggested_fix = 'Define GEMINI_API_KEY in environment variables';
     }
 
-    // 3. Gem den AI-analyserede hændelse i Supabase
+    // 3. Gem i Supabase
     const { data: savedEvent, error: dbError } = await supabaseAdmin
       .from('webhook_events')
       .insert({
@@ -104,7 +112,7 @@ ${JSON.stringify(payload).slice(0, 10000)}`;
         service: triage.service || 'Webhook',
         severity: triage.severity || 'MEDIUM',
         affected_user: triage.affected_user || 'N/A',
-        summary: triage.summary || 'Webhook Event',
+        summary: triage.summary || payload?.type || 'Webhook Event',
         root_cause: triage.root_cause || '',
         suggested_fix: triage.suggested_fix || '',
         raw_payload: payload,
@@ -114,54 +122,6 @@ ${JSON.stringify(payload).slice(0, 10000)}`;
 
     if (dbError) {
       console.error('Database Ingest Error:', dbError);
-    }
-
-    // 4. Send Slack Notifikation hvis konfigureret
-    const slackUrl = project.slack_webhook_url || process.env.SLACK_WEBHOOK_URL;
-    if (slackUrl) {
-      const color = triage.severity === 'CRITICAL' ? '#E01E5A' : triage.severity === 'HIGH' ? '#ECB22E' : '#2EB67D';
-      const slackMessage = {
-        attachments: [
-          {
-            color: color,
-            blocks: [
-              {
-                type: 'header',
-                text: {
-                  type: 'plain_text',
-                  text: `🚨 [${triage.severity}] ${triage.service} Incident: ${project.name}`,
-                  emoji: true,
-                },
-              },
-              {
-                type: 'section',
-                fields: [
-                  { type: 'mrkdwn', text: `*Affected User:*\n\`${triage.affected_user}\`` },
-                  { type: 'mrkdwn', text: `*Project:*\n${project.name}` },
-                ],
-              },
-              {
-                type: 'section',
-                text: { type: 'mrkdwn', text: `*Summary:*\n${triage.summary}` },
-              },
-              {
-                type: 'section',
-                text: { type: 'mrkdwn', text: `*Root Cause:*\n${triage.root_cause}` },
-              },
-              {
-                type: 'section',
-                text: { type: 'mrkdwn', text: `*Suggested Fix:*\n${triage.suggested_fix}` },
-              },
-            ],
-          },
-        ],
-      };
-
-      await fetch(slackUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(slackMessage),
-      }).catch((err) => console.error('Slack Send Error:', err));
     }
 
     return NextResponse.json({
