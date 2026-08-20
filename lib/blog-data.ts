@@ -4,6 +4,9 @@ export interface BlogPost {
   excerpt: string;
   date: string;
   readTime: string;
+  track: 'error-library' | 'deep-dive';
+  provider?: 'Stripe' | 'PayPal' | 'WooCommerce' | 'Shopify' | 'General';
+  errorCode?: string;
   author: {
     name: string;
     role: string;
@@ -19,6 +22,8 @@ export const blogPosts: BlogPost[] = [
     excerpt: 'When a production webhook fails, engineers lose hours digging through CloudWatch and Datadog. Discover how HookLens delivers root causes and actionable code fixes instantly.',
     date: 'August 16, 2026',
     readTime: '6 min read',
+    track: 'deep-dive',
+    provider: 'General',
     author: {
       name: 'Allan M. Pedersen',
       role: 'Founder @ UseHookLens'
@@ -158,6 +163,9 @@ With **HookLens**, you transform thousands of fragmented log lines into a clean 
     excerpt: 'The most common Stripe webhook error explained step-by-step. Learn why Next.js body parsers break HMAC-SHA256 signatures and how to handle raw buffers cleanly.',
     date: 'August 14, 2026',
     readTime: '4 min read',
+    track: 'error-library',
+    provider: 'Stripe',
+    errorCode: 'Webhook signature verification failed',
     author: {
       name: 'Allan M. Pedersen',
       role: 'Founder @ UseHookLens'
@@ -239,6 +247,8 @@ HookLens automatically verifies and archives incoming payloads and signatures in
     excerpt: 'Shopify guarantees at-least-once delivery. Discover how to architect idempotent workers that prevent duplicate order processing and eliminate HTTP 504 gateway timeouts.',
     date: 'August 11, 2026',
     readTime: '5 min read',
+    track: 'deep-dive',
+    provider: 'Shopify',
     author: {
       name: 'Allan M. Pedersen',
       role: 'Founder @ UseHookLens'
