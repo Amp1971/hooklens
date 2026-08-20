@@ -17,6 +17,124 @@ export interface BlogPost {
 
 export const blogPosts: BlogPost[] = [
   {
+    slug: 'how-to-handle-paypal-payment-capture-denied-webhooks',
+    title: 'How to Fix & Triage PAYMENT.CAPTURE.DENIED in PayPal Webhooks',
+    excerpt: 'Learn what causes PayPal payment capture denials, how to parse PAYER_ACCOUNT_RESTRICTED and INSTRUMENT_DECLINED codes, and how to automate customer recovery.',
+    date: 'August 20, 2026',
+    readTime: '5 min read',
+    track: 'error-library',
+    provider: 'PayPal',
+    errorCode: 'PAYMENT.CAPTURE.DENIED',
+    author: {
+      name: 'Allan M. Pedersen',
+      role: 'Founder @ UseHookLens'
+    },
+    tags: ['PayPal', 'Webhooks', 'Payment Failures', 'TypeScript'],
+    content: `
+When processing transactions via PayPal's v2 Checkout and Orders API, few webhook events cause as much silent customer churn as **\`PAYMENT.CAPTURE.DENIED\`**.
+
+Unlike standard credit card declines where a synchronous error modal often pops up in the user's browser, PayPal captures often execute asynchronously—leaving your backend in an indeterminate state if unhandled.
+
+---
+
+### Why Does PayPal Trigger \`PAYMENT.CAPTURE.DENIED\`?
+
+PayPal emits this webhook when an authorized capture attempt is permanently rejected by the payment network or PayPal risk engine.
+
+The root cause is located inside the \`resource.status_details.reason\` property of the JSON payload. The two most frequent triggers are:
+
+1. **\`PAYER_ACCOUNT_RESTRICTED\`**: The buyer's PayPal account has security limits, unverified identity status, or withdrawal blocks.
+2. **\`INSTRUMENT_DECLINED\`**: The underlying funding source (linked bank account, debit card, or credit card) was rejected by the issuing bank during the capture phase.
+
+---
+
+### Example PayPal Denial Payload
+
+Here is the exact structure your webhook endpoint receives when a capture fails:
+
+\`\`\`json
+{
+  "id": "WH-90823471092384-234890",
+  "event_type": "PAYMENT.CAPTURE.DENIED",
+  "create_time": "2026-08-20T08:30:00.000Z",
+  "resource_type": "capture",
+  "summary": "Payment capture was denied",
+  "resource": {
+    "id": "2GG82341908234",
+    "status": "DENIED",
+    "amount": {
+      "value": "149.00",
+      "currency_code": "USD"
+    },
+    "status_details": {
+      "reason": "PAYER_ACCOUNT_RESTRICTED"
+    },
+    "custom_id": "user_2N9xK8... (or customer email)"
+  }
+}
+\`\`\`
+
+---
+
+### Handling the Event in Node.js / Next.js
+
+To prevent orders from remaining in a "Pending" limbo, your webhook route should extract the failure reason and trigger customer remediation immediately:
+
+\`\`\`typescript
+import { NextResponse } from 'next/server';
+
+export async function POST(req: Request) {
+  const event = await req.json();
+
+  if (event.event_type === 'PAYMENT.CAPTURE.DENIED') {
+    const capture = event.resource;
+    const failureReason = capture.status_details?.reason || 'UNKNOWN_REASON';
+    const customerIdentifier = capture.custom_id;
+    const amount = \`\${capture.amount.value} \${capture.amount.currency_code}\`;
+
+    console.warn(\`[PayPal] Capture \${capture.id} denied for \${customerIdentifier}: \${failureReason}\`);
+
+    // 1. Mark the internal order/invoice as Failed
+    await updateOrderStatus(customerIdentifier, 'FAILED', {
+      reason: failureReason,
+      captureId: capture.id
+    });
+
+    // 2. Dispatch remediation email based on the exact reason
+    if (failureReason === 'PAYER_ACCOUNT_RESTRICTED') {
+      await sendCustomerAlert({
+        to: customerIdentifier,
+        subject: 'Action Required: PayPal Payment Not Completed',
+        message: 'PayPal was unable to process your payment due to account restrictions. Please update your payment method.'
+      });
+    }
+
+    // Always acknowledge with 200 OK so PayPal does not hammer your server with retries
+    return NextResponse.json({ received: true }, { status: 200 });
+  }
+
+  return NextResponse.json({ received: true }, { status: 200 });
+}
+\`\`\`
+
+---
+
+### 3 Best Practices for PayPal Webhook Pipelines
+
+1. **Always Return \`HTTP 200 OK\` on Denials:** Returning a \`400\` or \`500\` tells PayPal your server crashed, triggering endless retry storms for an already-denied transaction.
+2. **Utilize \`custom_id\`:** Always pass your internal database user ID or order ID in the initial order creation payload so it echoes back in the webhook \`resource.custom_id\`.
+3. **Automate Triage:** Track whether denial spikes correlate with specific geographic regions or fraud filters.
+
+---
+
+### Automated PayPal Incident Triage with HookLens
+
+Diagnosing raw JSON payloads during live outages wastes engineering hours. 
+
+With **HookLens**, every PayPal webhook failure is automatically captured, validated, and triaged. HookLens extracts the target customer, flags the root cause (\`PAYER_ACCOUNT_RESTRICTED\`), and provides instant resolution steps directly in your incident dashboard.
+    `
+  },
+  {
     slug: 'stop-searching-logs-automated-webhook-debugging',
     title: 'Stop Grepping Through 10,000 Server Logs: How AI Fixes Broken Webhooks in Seconds',
     excerpt: 'When a production webhook fails, engineers lose hours digging through CloudWatch and Datadog. Discover how HookLens delivers root causes and actionable code fixes instantly.',
